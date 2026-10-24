@@ -2,13 +2,15 @@
 
 Sit **inside** your car in **over the hill** (Funselektor, Steam): a first-person view with a real interior in the game's low-poly style. Working dials (speed, revs, fuel, outside temperature), warning lights, a gear display, and a steering wheel, pedals and levers that move with your input. Painted parts take your car's livery, dust and mud. Every car in the game has a cockpit.
 
-Works with keyboard, controller or steering wheel. With [OTH Wheel](https://github.com/JonkoMonk/oth-wheel) the cockpit's steering wheel turns exactly like your real one.
+Watch it in action: [mod spotlight video](https://youtu.be/rHvPhiTygKQ). Download: [OTH Cockpit on Nexus Mods](https://www.nexusmods.com/overthehill/mods/90).
+
+Works with keyboard, controller or steering wheel. With [OTH Wheel](https://github.com/JonkoMonk/oth-wheel) ([Nexus Mods](https://www.nexusmods.com/overthehill/mods/83)) the cockpit's steering wheel turns exactly like your real one.
 
 **Alpha:** many cars still have rough spots: parts in the wrong place, dials partly hidden behind the wheel, and small visual glitches around the windscreen pillars and window frames (the TrailBurner and Protector, for example). We're working on it. Screenshots of what looks wrong are very welcome in the Issues.
 
 ## Download and install
 
-From the [Releases](../../releases) page (or Nexus Mods): `OTH-Cockpit-v…-alpha.zip`, or `OTH-Wheel-and-Cockpit-v….zip` for both mods.
+From [Nexus Mods](https://www.nexusmods.com/overthehill/mods/90) or the [Releases](../../releases) page: `OTH-Cockpit-v…-alpha.zip`, or `OTH-Wheel-and-Cockpit-v….zip` for both mods.
 
 1. Close the game and extract the zip.
 2. Double-click `Install.bat` and follow the pop-ups. It finds the game, installs MelonLoader if you have no mod loader (or uses your BepInEx), and never changes original game files.
