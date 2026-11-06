@@ -19,6 +19,7 @@ CARS = {
                      dash="painted_pad", cluster="binnacle", wheel="droop", seats="bucket", handbrake="pull",
                      features=["grab_bar", "fj_bits"], eye_y=1.62, eye_z=-0.44, driver_x=0.42, dash_z=0.22, wheel_drop=0.50,
                      wheel_dist=0.42, wheel_tilt=25, wheel_r=0.212,
+                     trim_shift=0.03,   # pillar trims 3 cm towards the doors: a wedge of the sill showed at their foot
                      dial_r=0.064,   # 0.075 put the rim over the speedo/tacho edges (fit check, eye -2..+4 cm)
                      ws=dict(base_y=1.40, base_z=0.43, top_y=2.0, top_z=0.31, half_w=0.73),   # measured by hand (CLAUDE.md)
                      colors=dict(pad=(0.24, 0.23, 0.25))),
@@ -26,6 +27,7 @@ CARS = {
     "Burro": dict(game="Burro", side=1, character="The DingDing's workhorse brother: bench seat, dash tray, no radio",
                   dash="painted_pad", cluster="binnacle", wheel="t", seats="bench", seat_pattern="stripes", radio=False,
                   handbrake="pull", features=[], horn="accent",
+                  trim_shift=0.03,   # pillar trims 3 cm towards the doors: the dash corner showed under them
                   ws=dict(base_y=1.40, base_z=0.43, top_y=2.0, top_z=0.31, half_w=0.73),   # same front as the DingDing
                   colors=dict(seat=(0.42, 0.40, 0.36), seat2=(0.52, 0.50, 0.45), accent=(0.86, 0.52, 0.22),
                               rim=(0.86, 0.82, 0.70))),

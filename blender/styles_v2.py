@@ -491,8 +491,8 @@ def seats(b):
             for xx in (sx - 0.22, sx + 0.22):
                 k.beam(f"{side}_tube_low{xx}", (xx, cushion - 0.02, ez + 0.05), (xx, cushion - 0.03, back_z), 0.025, 0.025,
                        b.c["metal"])
-                k.beam(f"{side}_tube_up{xx}", (xx, cushion - 0.03, back_z), (xx, cushion + 0.60, back_z - 0.08), 0.025, 0.025,
-                       b.c["metal"])
+                k.beam(f"{side}_tube_up{xx}", (xx, cushion - 0.03, back_z), (xx, cushion + 0.60, back_z - 0.08), 0.022, 0.022,
+                       b.c["metal"])   # a little thinner than the lower tube: flush sides at the joint flickered
             P.prism(f"{side}_sling_seat", [(back_z + 0.02, cushion - 0.06), (back_z + 0.02, cushion - 0.03),
                                            (ez + 0.05, cushion), (ez + 0.05, cushion - 0.03)], "x", sx - 0.21, sx + 0.21, seat)
             bk = P.empty(f"{side}_backframe", (sx, cushion - 0.03, back_z), Rx(-7))
@@ -573,8 +573,20 @@ def visors_mirror(b):
     for i, x in enumerate((L.dx, -L.dx)):
         P.place(P.cbox(f"sun_visor{i}", (0.38, 0.018, 0.16), b.c["door"]), (x, ws["top_y"] - 0.03, ws["top_z"] - 0.12), Rx(-15))
     P.cbox("mirror_stem", (0.02, 0.06, 0.02), b.c["dark"], centre=(0, ws["top_y"] - 0.03, ws["top_z"] - 0.06))
-    P.place(P.cbox("mirror", (0.22, 0.06, 0.03), b.c["dark"]), (0.0, ws["top_y"] - 0.08, ws["top_z"] - 0.07),
-            Ry(8 * L.side * -1))
+    # Aimed like a driver sets it: the line from the eye reflects straight back through the rear window,
+    # a little down (the face's normal halfway between "to the eye" and "straight back").
+    from mathutils import Matrix, Vector
+    pos = (0.0, ws["top_y"] - 0.08, ws["top_z"] - 0.07)
+    g = b.m.get("rear_glass")   # aimed at the middle of the rear window when there is one
+    back = (Vector((0, (g[2] + g[3]) / 2, b.m["rear"])) - Vector(pos)) if g else Vector((0, -0.03, -1))
+    n = ((Vector(L.eye) - Vector(pos)).normalized() + back.normalized()).normalized()
+    zc = -n
+    xc = Vector((0, 1, 0)).cross(zc).normalized()
+    rot = Matrix((xc, zc.cross(xc), zc)).transposed()
+    P.place(P.cbox("mirror", (0.22, 0.06, 0.03), b.c["dark"]), pos, rot)
+    # The glass: the mod shows what a camera at the mirror sees on it (OthCockpit Mirrors.cs).
+    b.k.mirror_glass("mirror_glass_rear", "rear", [(-0.10, -0.024), (0.10, -0.024), (0.10, 0.024), (-0.10, 0.024)],
+                     -0.0175, pos, rot)   # 2.5 mm in front of the housing (closer read as one surface: flicker)
 
 
 # ---------------------------------------------------------------- signature features
@@ -756,13 +768,17 @@ def build(k, cfg):
     win_front = max((w_[1] for w_ in doors_), default=ws["base_z"] - 0.3)
     # Plain boxes (doors, pillars between the windows, roof edges, header, headliner, rear wall): the traced
     # surfaces of kit.auto_lining come out saw-toothed along slanted window edges, which reads badly.
-    # (Between the A pillar beam and the door window the outside shows through: it reads as glass.)
-    k.lining(dict(m, windows=doors_ or m["windows"]), b.c["liner"], front_z=win_front + 0.02)
+    # No A-pillar beams: the body's own pillars get inside copies at the end (kit.inner_skins, in
+    # build_car_v2.py); a straight beam beside them looked like a second pillar with glass between the two.
+    # (cfg a_beam=True brings the beams back for a car.)
+    k.lining(dict(m, windows=doors_ or m["windows"]), b.c["liner"], front_z=win_front + 0.02,
+             skip=() if cfg.get("a_beam") else ("a_pillars",))
     if "body_bits" in b.feat:
         k.body_bits(m)
     if "fj_bits" not in b.feat:   # (the FJs have hand-made closed wipers)
         k.wiper_copies(m)
     import signatures_v2
+    signatures_v2.SETTLE.clear()
     sig = signatures_v2.SIGS.get(k.car)
     if sig:   # hand-composed dash, instruments and props for this car
         signatures_v2.structure(b)
@@ -779,5 +795,8 @@ def build(k, cfg):
     doors(b)
     visors_mirror(b)
     features(b)
+    signatures_v2.settle_props(skip={k.body.name})
     soften()
+    if cfg.get("side_mirrors", True):
+        k.side_mirrors(L.eye)
     return L

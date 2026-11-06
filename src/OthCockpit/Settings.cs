@@ -15,6 +15,12 @@ internal static class Settings
     public static ConfigEntry<float> OffsetX, OffsetY, OffsetZ, Pitch, FieldOfView;
     public static ConfigEntry<float> LookMouse, LookSpeed, LookReturn, LookIntoTurn;
     public static ConfigEntry<float> EarsToCentre;
+    public enum MirrorQuality { Low, Medium, High, Ultra, Custom }
+    public enum RearViewMode { Auto, Car, Road }
+    public static ConfigEntry<bool> MirrorsOn, SideMirrors;
+    public static ConfigEntry<MirrorQuality> MirrorQualityLevel;
+    public static ConfigEntry<RearViewMode> RearView;
+    public static ConfigEntry<float> MirrorResolution, MirrorUpdateEvery;
 
     public static void Bind(ConfigFile cfg)
     {
@@ -46,6 +52,22 @@ internal static class Settings
         EarsToCentre = cfg.Bind("Sound", "EarsToCentre", 0.7f,
             "In the cockpit, hear from this far towards the middle of the car (0 = from your seat, like the game: the car " +
             "then sounds almost only on one side; 1 = right in the middle: the same in both ears).");
+
+        MirrorsOn = cfg.Bind("Mirrors", "Enabled", true,
+            "Working mirrors: the rear-view mirror and the car's side mirrors show what's behind you. Each mirror is one more " +
+            "picture of the world per frame, so they cost some frame rate. false = plain mirrors.");
+        MirrorQualityLevel = cfg.Bind("Mirrors", "Quality", MirrorQuality.Medium,
+            "How good the mirrors look, and how much frame rate they cost. Low = only the rear-view mirror, blurry, not every " +
+            "frame (slow PCs); Medium = all mirrors, sharp enough, every other frame; High = sharper, how far you see doubles; " +
+            "Ultra = sharpest, every frame, shadows (fast PCs). Custom = the three settings below.");
+        RearView = cfg.Bind("Mirrors", "RearView", RearViewMode.Auto,
+            "What the rear-view mirror shows. Car = like in a real car: the cabin and out through the rear window. " +
+            "Road = only the road behind the car. Auto = Road (the default).");
+        SideMirrors = cfg.Bind("Mirrors", "SideMirrors", true, "(Custom quality) Also the outside mirrors (false = only the rear-view mirror: cheaper).");
+        MirrorResolution = cfg.Bind("Mirrors", "Resolution", 1f,
+            "(Custom quality) Sharpness of the mirror pictures: 1 = normal, 0.5 = half (faster), 2 = double.");
+        MirrorUpdateEvery = cfg.Bind("Mirrors", "UpdateEvery", 2f,
+            "(Custom quality) Draw each mirror every this many frames (1 = every frame: smoothest, slowest; 2 = every other frame, the mirrors take turns).");
 
         _lastWrite = File.Exists(cfg.ConfigFilePath) ? File.GetLastWriteTimeUtc(cfg.ConfigFilePath) : DateTime.MinValue;
     }

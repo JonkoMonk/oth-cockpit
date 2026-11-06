@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using UnityEngine;
 #if MELON
 using Il2Cpp;   // MelonLoader puts the game's namespace-less classes here
@@ -111,7 +112,7 @@ internal static class Car
             try { EngineRunning = Status.EngineRunning; } catch { }
         }
         // The car's own input object knows the headlight switch; the lights controller is a fallback.
-        try { Headlights = Input.HeadlightsOn; }
+        try { Headlights = ReadHeadlights(); }
         catch { if (Lights != null) try { Headlights = Lights.AreHeadlightsOn; } catch { } }
         try
         {
@@ -120,6 +121,21 @@ internal static class Car
             OutsideTempC = c != null ? (c.currentTemperature - 32f) * 5f / 9f : float.NaN;
         }
         catch { OutsideTempC = float.NaN; }
+    }
+
+    // Game 26.10.30 replaced the bool VehicleInput.HeadlightsOn with HeadlightsMode (Off/Low/High). By name, so
+    // this DLL runs on both: a direct call to a removed member stops the whole calling method from running.
+    static PropertyInfo _headlightsMode, _headlightsOn;
+
+    static bool ReadHeadlights()
+    {
+        if (_headlightsMode == null && _headlightsOn == null)
+        {
+            _headlightsMode = typeof(VehicleInput).GetProperty("HeadlightsMode");
+            _headlightsOn = typeof(VehicleInput).GetProperty("HeadlightsOn");
+        }
+        if (_headlightsMode != null) return _headlightsMode.GetValue(Input).ToString() != "Off";
+        return (bool)_headlightsOn.GetValue(Input);
     }
 
     public static string Describe() =>

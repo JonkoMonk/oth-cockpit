@@ -28,6 +28,7 @@ public class CockpitBehaviour : MonoBehaviour
 
     Transform _carOf;              // car the objects below were built for
     GameObject _cockpit, _camGo;
+    GlbBuilder.Result _built;
     CinemachineVirtualCamera _vcam;
     CinemachineFreeLook _chase;
     Vector3 _eye;                  // the model's standard eye position, car-local
@@ -67,7 +68,12 @@ public class CockpitBehaviour : MonoBehaviour
             if (now >= _nextReload)
             {
                 _nextReload = now + 2f;
-                if (Settings.ReloadIfChanged()) { Plugin.Info("config reloaded"); PlaceSeat(); }
+                if (Settings.ReloadIfChanged())
+                {
+                    Plugin.Info("config reloaded");
+                    PlaceSeat();
+                    if (_built != null && _carOf != null) { Mirrors.Setup(_built, _carOf, _eye); Mirrors.SetActive(_on); }
+                }
                 if (_keyNames != Settings.ToggleKey.Value + Settings.DumpKey.Value)
                 {
                     _keyNames = Settings.ToggleKey.Value + Settings.DumpKey.Value;
@@ -89,7 +95,9 @@ public class CockpitBehaviour : MonoBehaviour
                 return;
             }
             if (_carOf != null && _carOf != Car.Root) Teardown();
-            Car.Update();
+            // After a game update a dial may lose its value; that must not take the whole cockpit with it.
+            try { Car.Update(); }
+            catch (Exception e) { Plugin.ErrorOnce("car values", e); }
 
             bool driving = Gate.Driving();
             if (keyPressed || wheelPressed) Want(!_wanted, keyPressed ? Settings.ToggleKey.Value : "wheel button");
@@ -101,7 +109,11 @@ public class CockpitBehaviour : MonoBehaviour
             bool show = _wanted && driving;
             if (show != _on) SetOn(show);
             WheelLink.SetCockpitActive(_on);
-            if (_on) { SeatKeys(); Animate(Time.deltaTime); Head(Time.deltaTime); Ears.Follow(_carOf, _camGo.transform); }
+            if (_on)
+            {
+                SeatKeys(); Animate(Time.deltaTime); Head(Time.deltaTime); Ears.Follow(_carOf, _camGo.transform);
+                Mirrors.Tick(_camGo.transform.position, Time.unscaledDeltaTime);
+            }
         }
         catch (Exception e) { Plugin.ErrorOnce("update", e); Say(e.Message); }
     }
@@ -132,6 +144,7 @@ public class CockpitBehaviour : MonoBehaviour
         if (on && !Build()) { _wanted = false; return; }
         _on = on;
         if (_cockpit != null) _cockpit.SetActive(on);
+        Mirrors.SetActive(on);
         if (_camGo != null)
         {
             _camGo.SetActive(on);
@@ -223,6 +236,8 @@ public class CockpitBehaviour : MonoBehaviour
         _vcam.m_Priority = _chase != null ? _chase.m_Priority + 1 : 100;
         _camGo.SetActive(false);
         _cockpit.SetActive(false);
+        _built = built;
+        Mirrors.Setup(built, car, _eye);
         _carOf = car;
         PlaceSeat();
         Plugin.Info($"cockpit built for {Car.Name}: eye {_eye}, chase cam {(_chase != null ? _chase.name : "NOT FOUND")}, " +
@@ -400,6 +415,8 @@ public class CockpitBehaviour : MonoBehaviour
     void Teardown()
     {
         Ears.Restore();
+        Mirrors.Teardown();
+        _built = null;
         if (_cockpit != null) UnityEngine.Object.Destroy(_cockpit);
         if (_camGo != null) UnityEngine.Object.Destroy(_camGo);
         _cockpit = _camGo = null;

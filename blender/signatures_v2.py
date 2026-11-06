@@ -143,40 +143,102 @@ def seat_dims(c):
 
 # ---------------------------------------------------------------- props (low-poly, flat colours)
 
+# Loose props lie where they're put by hand, on a dash top or seat that slopes or steps differently per car:
+# some sank half into the dash (the Burro's clipboard). Each prop helper adds its parts here as one group;
+# settle_props() (styles_v2.build, after the seats) then drops every group onto whatever is under it.
+SETTLE = []
+
+
+def loose(*names):
+    SETTLE.append(names)
+
+
+def settle_props(skip=()):
+    """Moves each loose prop up or down so its lowest corner rests on the highest surface under it (rays
+    down from 10 cm above the prop; parts of the same prop and the car body don't count)."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    bpy.context.view_layer.update()
+    for names in SETTLE:
+        group = [bpy.data.objects[n] for n in names if n in bpy.data.objects]
+        if not group:
+            continue
+        verts, polys, owner = [], [], []
+        for ob in bpy.data.objects:
+            if ob.type != "MESH" or ob in group or ob.name in skip or not ob.data.polygons:
+                continue
+            base = len(verts)
+            verts.extend(ob.matrix_world @ v.co for v in ob.data.vertices)
+            polys.extend([base + i for i in p.vertices] for p in ob.data.polygons)
+            owner.extend([ob.name] * len(ob.data.polygons))
+        tree = BVHTree.FromPolygons(verts, polys)
+        pts = [ob.matrix_world @ v.co for ob in group for v in ob.data.vertices]
+        top = max(p.z for p in pts)   # Blender: z up
+        # What it lies on: the part under its middle. Other parts count only up to 2 cm higher than that
+        # (a dash slope it sank into), not a seat back, lever knob or rail its edge overhangs.
+        mid = sum(pts, Vector()) / len(pts)
+        hm = tree.ray_cast(Vector((mid.x, mid.y, top + 0.10)), Vector((0, 0, -1)), 0.60)
+        support = owner[hm[2]] if hm[0] is not None else None
+        hits = []
+        for p in pts:
+            h = tree.ray_cast(Vector((p.x, p.y, top + 0.10)), Vector((0, 0, -1)), 0.60)
+            if h[0] is not None:
+                hits.append((h[0].z - p.z, owner[h[2]]))
+        base = max((d for d, o in hits if o == support), default=None)
+        best, on = None, None
+        for d, o in hits:
+            if o == support or (base is not None and d <= base + 0.02):
+                if best is None or d > best:
+                    best, on = d, o
+        if best is None or abs(best) > 0.15 or abs(best) < 0.0005:
+            continue
+        for ob in group:
+            if ob.parent is None or ob.parent not in group:
+                ob.location.z += best + 0.0005
+        bpy.context.view_layer.update()
+        print(f"settled {names[0]}: {best * 100:+.1f} cm (on {on})")
+
 def thermos(c, x, y, z):
     P.place(P.cylinder("thermos", 0.04, 0.26, M("thermos", (0.25, 0.48, 0.42)), n=10), (x, y, z), Rx(-90))
     P.place(P.cylinder("thermos_cap", 0.042, 0.06, M("thermos_cap", (0.80, 0.78, 0.72)), n=10), (x, y + 0.26, z), Rx(-90))
+    loose("thermos", "thermos_cap")
 
 
 def mug(c, name, x, y, z, col=(0.86, 0.36, 0.22)):
     P.place(P.cylinder(name, 0.04, 0.09, M(name, col), n=10), (x, y, z), Rx(-90))
     P.place(P.torus(name + "_handle", 0.025, 0.007, M(name, col), n=10, m=5), (x + 0.045, y + 0.045, z), Ry(90))
+    loose(name, name + "_handle")
 
 
 def gloves(c, x, y, z, rot=20):
     g = M("gloves", (0.78, 0.62, 0.36))
     for i in range(2):
         P.place(P.cbox(f"glove{i}", (0.10, 0.025, 0.17), g), (x + i * 0.06, y + i * 0.025, z - i * 0.03), Ry(rot + i * 25))
+    loose("glove0", "glove1")   # one on the other: they move together
 
 
-def clipboard(c, x, y, z, rot=8):
-    P.place(P.cbox("clipboard", (0.22, 0.012, 0.30), M("board", (0.66, 0.48, 0.30))), (x, y, z), Ry(rot))
-    P.place(P.cbox("clip_paper", (0.19, 0.004, 0.24), M("paper", (0.95, 0.93, 0.88))), (x, y + 0.008, z - 0.01), Ry(rot))
+def clipboard(c, x, y, z, rot=8, w=0.22, d=0.30):
+    P.place(P.cbox("clipboard", (w, 0.012, d), M("board", (0.66, 0.48, 0.30))), (x, y, z), Ry(rot))
+    P.place(P.cbox("clip_paper", (w - 0.03, 0.004, d - 0.06), M("paper", (0.95, 0.93, 0.88))), (x, y + 0.008, z - 0.01), Ry(rot))
+    loose("clipboard", "clip_paper")
 
 
 def map_sheet(c, name, x, y, z, rot=15, w=0.30, d=0.22):
     P.place(P.cbox(name, (w, 0.006, d), M("map", (0.92, 0.86, 0.66))), (x, y, z), Ry(rot))
     P.place(P.cbox(name + "_trail", (w * 0.8, 0.002, 0.012), M("map_trail", (0.82, 0.30, 0.20))), (x, y + 0.004, z), Ry(rot + 25))
+    loose(name, name + "_trail")
 
 
 def toolbox(c, x, y, z):
     P.box("toolbox", (x - 0.20, y, z - 0.10), (x + 0.20, y + 0.16, z + 0.10), M("toolbox", (0.82, 0.22, 0.16)))
     P.cbox("toolbox_handle", (0.24, 0.03, 0.03), c.b.c["dark"], centre=(x, y + 0.19, z))
+    loose("toolbox", "toolbox_handle")
 
 
 def jerrycan(c, x, y, z):
     P.box("jerrycan", (x - 0.08, y, z - 0.18), (x + 0.08, y + 0.44, z + 0.18), M("jerry", (0.30, 0.38, 0.22)))
     P.box("jerry_handle", (x - 0.03, y + 0.44, z + 0.04), (x + 0.03, y + 0.47, z + 0.16), c.b.c["dark"])
+    loose("jerrycan", "jerry_handle")
 
 
 def picnic_basket(c, x, y, z):
@@ -184,19 +246,21 @@ def picnic_basket(c, x, y, z):
     P.box("basket", (x - 0.18, y, z - 0.12), (x + 0.18, y + 0.16, z + 0.12), wick)
     P.box("basket_lid", (x - 0.185, y + 0.16, z - 0.125), (x + 0.185, y + 0.18, z + 0.125), M("wicker_dark", (0.60, 0.42, 0.22)))
     P.place(P.torus("basket_handle", 0.10, 0.01, wick, n=16, m=5), (x, y + 0.18, z), Rx(90) @ Rz(0))
+    loose("basket", "basket_lid", "basket_handle")
 
 
 def compass_ball(c, x, y, z):
     P.place(P.cylinder("compass_base", 0.035, 0.015, c.b.c["dark"], n=12), (x, y, z), Rx(-90))
     P.place(P.ball("compass", 0.035, M("compass_glass", (0.20, 0.22, 0.26)), rings=6, segs=10), (x, y + 0.05, z))
     P.place(P.cbox("compass_card", (0.05, 0.004, 0.004), c.b.c["accent"]), (x, y + 0.05, z - 0.03))
+    loose("compass_base", "compass", "compass_card")
 
 
 def sheepskin(c, x, cushion, back_z, w=0.23):
     wool = M("wool", (0.90, 0.84, 0.72))
     P.box(f"wool_seat{x:.2f}", (x - w, cushion + 0.015, back_z + 0.02), (x + w, cushion + 0.06, c.L.eye[2] + 0.05), wool)
     bk = P.empty(f"wool_backframe{x:.2f}", (x, cushion, back_z + 0.02), Rx(-7))
-    P.box(f"wool_back{x:.2f}", (-w, 0.04, 0.0), (w, 0.62, 0.05), wool, parent=bk)
+    P.box(f"wool_back{x:.2f}", (-w + 0.004, 0.04, 0.0), (w - 0.004, 0.62, 0.05), wool, parent=bk)   # narrower: flush sides flickered
 
 
 def beads(c, x, cushion, back_z):
@@ -238,7 +302,11 @@ def burro(b):
     the bench."""
     c = C(b)
     pm, uv = c.paint()
-    body(c, "dash_body", [(c.fz + 0.02, c.fb - 0.02), (c.fz, c.fb), (c.fz, c.ft), (c.fz + 0.05, c.ft + 0.01), (c.front, c.top),
+    # The dash top stays level for the tray (it rises towards the windscreen after it): on the slope the
+    # clipboard sank half into the dash.
+    flat = min(c.fz + 0.24, c.front - 0.04)
+    top = [(c.fz + 0.05, c.ft + 0.01)] + ([(flat, c.ft + 0.01)] if flat > c.fz + 0.06 and c.top > c.ft + 0.01 else [])
+    body(c, "dash_body", [(c.fz + 0.02, c.fb - 0.02), (c.fz, c.fb), (c.fz, c.ft)] + top + [(c.front, c.top),
                           (c.front + 0.02, c.fb - 0.02)], pm, uv)
     z = c.fz - 0.002
     zz = z - 0.013
@@ -262,10 +330,17 @@ def burro(b):
     knob_row(c, "blank_screw", (-0.085, 0.085), c.cy - 0.005, c.fz - 0.004, b.c["metal"], r=0.006, length=0.004)
     knob_row(c, "pull_knob", (-0.06, 0.0, 0.06), c.cy - 0.10, c.fz, b.c["knob"], r=0.013, length=0.03)
     tx0, tx1 = c.px(0.18, c.w - 0.06)
-    P.box("tray_floor", (tx0, c.ft + 0.005, c.fz - 0.02), (tx1, c.ft + 0.012, c.fz + 0.14), b.c["rubber"])
-    P.box("tray_lip", (tx0, c.ft + 0.012, c.fz - 0.03), (tx1, c.ft + 0.045, c.fz - 0.015), pm, uv=uv)
-    clipboard(c, (tx0 + tx1) / 2 - 0.06 * c.side, c.ft + 0.02, c.fz + 0.05, rot=8)
-    gloves(c, (tx0 + tx1) / 2 + 0.12 * -c.side, c.ft + 0.03, c.fz + 0.03)
+    # Rubber mat on the level part of the dash top (this dash is only ~17 cm deep), a low lip at the front.
+    # A logbook sized to the tray and the gloves lie across it: the old 30 cm clipboard hung out of the
+    # tray and sank into the dash top behind it.
+    tz1 = flat - 0.005
+    P.box("tray_floor", (tx0, c.ft + 0.01, c.fz - 0.015), (tx1, c.ft + 0.016, tz1), b.c["rubber"])
+    P.box("tray_lip", (tx0, c.ft + 0.012, c.fz - 0.03), (tx1, c.ft + 0.026, c.fz - 0.015), pm, uv=uv)
+    depth = tz1 - (c.fz - 0.015)
+    tzm = (c.fz - 0.015 + tz1) / 2
+    tx = (tx0 + tx1) / 2
+    clipboard(c, tx - 0.12, c.ft + 0.023, tzm, rot=88, w=min(0.12, depth - 0.015), d=0.20)
+    gloves(c, tx + 0.06, c.ft + 0.03, tzm + 0.01, rot=78)
     cushion, back_z = seat_dims(c)
     toolbox(c, c.p(0.45), cushion + 0.02, c.L.eye[2] - 0.15)
 
@@ -299,7 +374,8 @@ def protector(b):
     for i in range(3):
         x = -0.06 + i * 0.06
         P.box(f"heater_slot{i}", (x - 0.008, c.cy - 0.06, c.fz - 0.145), (x + 0.008, c.cy + 0.06, c.fz - 0.14), b.c["dark"])
-        P.box(f"heater_tab{i}", (x - 0.016, c.cy - 0.02 + i * 0.03, c.fz - 0.17), (x + 0.016, c.cy + i * 0.03, c.fz - 0.1415), b.c["knob3"] if i == 1 else b.c["metal"])
+        P.box(f"heater_tab{i}", (x - 0.016, c.cy - 0.025 + i * 0.03, c.fz - 0.17), (x + 0.016, c.cy - 0.005 + i * 0.03, c.fz - 0.1415),
+              b.c["knob3"] if i == 1 else b.c["metal"])   # (the top tab's top was flush with the slot's: flicker)
     cassette_deck(c, "radio", 0.0, c.fb - 0.03, c.fz - 0.14, w=0.17)
     P.box("cubby_box", (-0.16, L.floor + 0.25, L.eye[2] - 0.40), (0.16, L.floor + 0.48, L.eye[2] - 0.02), d)
     P.box("cubby_lid", (-0.165, L.floor + 0.48, L.eye[2] - 0.405), (0.165, L.floor + 0.50, L.eye[2] - 0.015), b.c["seat"])
@@ -681,7 +757,7 @@ def wombat(b):
         gear_display(b, c.dx - 0.26, yt + 0.035, zz, size=0.024)
     gx0, gx1 = c.px(0.20, 0.55)
     c.k.beam("grab_handle", (gx0, c.cy + 0.05, c.fz - 0.09), (gx1, c.cy + 0.05, c.fz - 0.09), 0.04, 0.04, b.c["dark"])
-    for i, gx in enumerate((gx0 + 0.02, gx1 - 0.02)):
+    for i, gx in enumerate((gx0 + 0.025, gx1 - 0.025)):   # posts a little in from the bar's ends (flush ends flickered)
         P.box(f"grab_post{i}", (gx - 0.02, c.cy + 0.035, c.fz - 0.09), (gx + 0.02, c.cy + 0.065, c.fz), b.c["dark"])
     for i in range(3):
         x = -0.05 + i * 0.05
@@ -704,19 +780,19 @@ def brick(b):
     zz = z - 0.004
     y = min(top - 0.10, c.thru(zz, (c.dx - 0.085, 0.07), (c.dx + 0.085, 0.07)))
     with cluster(b, hi=top + 0.045):
+        # A wide cluster: fuel and temp beside the big dials, outside the wheel's rim (squeezed in at the bottom
+        # they hung below the face and hid behind the rim), lamps in the top corners of the black face.
         bot = min(top - 0.21, y - 0.135)
-        P.box("cluster_box", (c.dx - 0.30, bot, z), (c.dx + 0.30, top, c.fz), d)
+        P.box("cluster_box", (c.dx - 0.35, bot, z), (c.dx + 0.35, top, c.fz), d)
         P.prism("cluster_hood", [(z - 0.06, top + 0.01), (z - 0.05, top + 0.035), (c.fz + 0.03, top + 0.045), (c.fz + 0.03, top), (z, top)],
-                "x", c.dx - 0.31, c.dx + 0.31, b.c["pad"])
-        plate(c, "cluster_face", c.dx - 0.28, c.dx + 0.28, bot + 0.01, top - 0.01, z, b.c["panel"], depth=0.003)
+                "x", c.dx - 0.36, c.dx + 0.36, b.c["pad"])
+        plate(c, "cluster_face", c.dx - 0.33, c.dx + 0.33, bot + 0.01, top - 0.01, z, b.c["panel"], depth=0.003)
         gauge(b, "speedo", c.dx - 0.085, y, 0.07, zz)
         gauge(b, "tacho", c.dx + 0.085, y, 0.07, zz)
-        ys = min(y + 0.03, c.open_y(c.dx - 0.225, 0.042, zz), c.open_y(c.dx + 0.225, 0.042, zz))
-        gauge(b, "fuel", c.dx - 0.225, ys, 0.03, zz)
-        gauge(b, "temp", c.dx + 0.225, ys, 0.03, zz)
-        # Lamps in pairs at the ends (outside the rim), the gear display in the notch over the big dials.
-        lamps(b, {"handbrake": c.dx - 0.282, "headlights": c.dx + 0.282}, y + 0.045, zz, r=0.009)
-        lamps(b, {"engine": c.dx - 0.282, "lowrange": c.dx + 0.282}, y + 0.015, zz, r=0.009)
+        gauge(b, "fuel", c.dx - 0.285, y, 0.03, zz)
+        gauge(b, "temp", c.dx + 0.285, y, 0.03, zz)
+        lamps(b, {"handbrake": c.dx - 0.30, "engine": c.dx - 0.27, "headlights": c.dx + 0.27, "lowrange": c.dx + 0.30},
+              top - 0.03, zz, r=0.009)
         gear_display(b, c.dx, y + 0.075, zz, size=0.028)
     cassette_deck(c, "deck", c.p(0.05), c.cy, c.fz, w=0.18)
     for i in range(3):
@@ -822,7 +898,7 @@ def grizzly(b):
     gear_display(b, -0.05, -0.078, -0.002, pod, size=0.02)
     P.place(P.cylinder("round_vent", 0.05, 0.02, b.c["dark"], n=16, z0=-0.02), (0.0, c.ft - 0.06, c.fz + 0.10))
     tray_y = c.fb + 0.035
-    map_sheet(c, "shelf_map", c.p(0.40), tray_y, c.fz - 0.02, rot=10, w=0.26, d=0.12)
+    map_sheet(c, "shelf_map", c.p(0.40), tray_y, c.fz + 0.02, rot=5, w=0.26, d=0.12)   # clear of the front lip
     sg = M("shades", (0.10, 0.10, 0.12))
     for i in (-1, 1):
         P.place(P.cbox(f"shade_lens{i}", (0.045, 0.006, 0.03), sg), (c.p(0.18) + i * 0.028, tray_y + 0.006, c.fz - 0.03), Ry(-15))
@@ -949,6 +1025,7 @@ def _loaf(c, x, y, z, rot=30):
         t = -0.18 + i * 0.12
         P.place(P.cbox(f"loaf_cut{i}", (0.02, 0.006, 0.05), M("bread_cut", (0.96, 0.84, 0.60))),
                 (x + math.cos(math.radians(rot)) * t, y + 0.085, z - math.sin(math.radians(rot)) * t), Ry(rot + 35))
+    loose("loaf", *[f"loaf_cut{i}" for i in range(4)])
 
 
 

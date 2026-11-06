@@ -32,6 +32,24 @@ def _components(cells):
     return out
 
 
+def _hull2d(points):
+    """Convex hull of 2D points, counter-clockwise, without (nearly) straight corners."""
+    pts = sorted(set((round(x, 4), round(y, 4)) for x, y in points))
+    if len(pts) < 3:
+        return pts
+    cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 1e-7:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 1e-7:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
 LAMP_COLOURS = {"handbrake": (0.9, 0.06, 0.03), "engine": (0.9, 0.06, 0.03),
                 "headlights": (0.10, 0.85, 0.20), "lowrange": (1.0, 0.55, 0.0)}
 LAMP_CELLS = {"handbrake": 0, "headlights": 1, "lowrange": 2, "engine": 3}   # lamps.png
@@ -533,8 +551,25 @@ class Kit:
             # tucked into the roof-edge panels (which start 1.2 cm inside the skin)
             hw = min(self.prof_x(self.wall_profile(roof - 0.08, roof - 0.02, s_), roof - 0.03) for s_ in (-1, 1)) + 0.005
         if "header" not in skip and roof - ws["top_y"] > 0.02:
-            P.box("header", (-hw, ws["top_y"] - 0.01, ws["top_z"] - 0.12), (hw, roof, ws["top_z"] + 0.02), self.paint,
-                  uv=self.uv("header", (0, ws["top_y"] - 0.05, ws["top_z"] - 0.3), (0, 0.6, 1)))
+            # Its front follows the windscreen glass (6 mm behind it): the glass runs on up past the measured
+            # top, and the game draws it from inside too, so it showed in front of a plain box.
+            y0, zb, zf = ws["top_y"] - 0.01, ws["top_z"] - 0.12, ws["top_z"] + 0.02
+            n = max(2, int(round((roof - y0) / 0.01)) + 1)
+            front = []
+            for i in range(n):
+                y = y0 + (roof - y0) * i / (n - 1)
+                z = zf
+                for x in (0.0, -0.3 * hw, 0.3 * hw, -0.6 * hw, 0.6 * hw, -0.85 * hw, 0.85 * hw, -0.97 * hw, 0.97 * hw):
+                    p, _, kind = self.sampler.hit((x, y, ws["top_z"] - 0.25), (0, 0, 1), 0.45)
+                    if p is not None and kind == "glass":
+                        z = min(z, p.z - 0.006)
+                front.append((max(z, zb + 0.02), y))
+            moved = sum(1 for z, _ in front if z < zf)
+            prof = [(zb, y0), (zb, roof)] + front[::-1]
+            P.prism("header", prof, "x", -hw, hw, self.paint,
+                    uv=self.uv("header", (0, ws["top_y"] - 0.05, ws["top_z"] - 0.3), (0, 0.6, 1)))
+            if moved:
+                print(f"header: front steps back behind the windscreen glass at {moved} of {n} heights")
         if "headliner" not in skip:
             P.box("headliner", (-hw + 0.01, roof - 0.03, rear + 0.01), (hw - 0.01, roof - 0.005, ws["top_z"] - 0.13), liner)
         if "rear_wall" not in skip:
@@ -793,6 +828,484 @@ class Kit:
             P.mesh_object("frame_covers", verts, faces, self.paint, uvs=uvs, closed=False)
         print(f"frame covers: {len(faces)} body trim faces covered")
         return len(faces)
+
+    def pillar_trims(self, eye, min_w=0.07, overlap=0.012, overlap_out=0.025, depth=0.035, lift=0.015, shift=0.0):
+        """Solid trim over both A pillars. The inner skins copy the body's own pillar, but on many cars that is
+        a thin flat strip seen from the seat ("a line with no body to it"). Rows of rays from the eye, one per
+        degree of pitch, sweep sideways from the windscreen: glass, then the pillar (paint/trim), then the side
+        glass. The trim spans the pillar plus `overlap` onto the windscreen and `overlap_out` towards the door
+        (covering the door frame's front edge; at least min_w wide), lifted `lift` towards the eye so it sits
+        in front of the glass, `depth` deep with a narrower inner face. Its ends run on along the pillar until
+        they meet the dash below and the header or roof above. Run before inner_skins (they skip what it
+        covers)."""
+        from mathutils.bvhtree import BVHTree
+        S = self.sampler
+        e = Vector(eye)
+        U2B3 = carref.U2B3
+        dg = bpy.context.evaluated_depsgraph_get()
+        verts_, polys_ = [], []
+        for ob in bpy.data.objects:
+            if ob.type != "MESH" or ob == self.body:
+                continue
+            ev = ob.evaluated_get(dg)
+            me = ev.to_mesh()
+            base = len(verts_)
+            verts_.extend(ob.matrix_world @ v.co for v in me.vertices)
+            polys_.extend([base + i for i in p.vertices] for p in me.polygons)
+            ev.to_mesh_clear()
+        ours = BVHTree.FromPolygons(verts_, polys_)
+
+        def reach(start, direction, most=0.35, none=0.03):
+            """How far along direction (game space) until our parts or the body: the trim's end runs that far
+            (`none` if nothing is within `most`: the end is already at the header or dash)."""
+            o, d = U2B3 @ start, (U2B3 @ direction).normalized()
+            best = None
+            for t in (ours, S.bvh):
+                h = t.ray_cast(o, d, most)
+                if h[0] is not None:
+                    best = min(best if best is not None else most, h[3] + 0.02)
+            return none if best is None else best
+        made = []
+
+        def scan(sd, pi):
+            """One row of rays at pitch pi: (state, first, last, uv, paint uv); state 3 = windscreen, pillar,
+            side glass. uv is the pillar's first hit (often the windscreen's black rubber seal), paint uv the
+            first painted hit on it (None if none): the trim takes its colour from that."""
+            pitch = math.radians(pi)
+            state, first, last, uv, gap, puv = 0, None, None, None, 0, None
+            for yi in range(0, 321):
+                yaw = math.radians(sd * yi * 0.25)
+                d = Vector((math.sin(yaw) * math.cos(pitch), math.sin(pitch), math.cos(yaw) * math.cos(pitch)))
+                p, uv_, kind = S.hit(tuple(e), tuple(d), 2.5)
+                if p is None or kind == "light":
+                    break
+                if state == 0:              # waiting for the windscreen
+                    if kind == "glass" and p.z - e.z > 0.15:
+                        state = 1
+                elif state == 1:            # on the windscreen; the pillar starts at the first non-glass
+                    if kind in ("paint", "trim") and (p - e).length < 1.6:
+                        state, first, last, uv = 2, p, p, uv_
+                        if kind == "paint":
+                            puv = uv_
+                elif state == 2:            # on the pillar until the side glass
+                    if kind == "glass":
+                        # A sliver of glass between the windscreen frame and the door's front frame
+                        # belongs to the pillar: only 2 degrees of glass end it.
+                        gap += 1
+                        if gap >= 8:
+                            state = 3
+                            break
+                        continue
+                    if kind not in ("paint", "trim") or (p - first).length > 0.25:
+                        break
+                    last, gap = p, 0
+                    if kind == "paint" and puv is None:
+                        puv = uv_
+            return state, first, last, uv, puv
+
+        for sd in (-1, 1):
+            rows = []
+            for pi in range(-35, 56):
+                state, first, last, uv, puv = scan(sd, pi)
+                if state == 3 and (first + last).x / 2 * sd > 0.4 and last.z - e.z > 0.05:
+                    rows.append((pi, first, last, uv, puv))
+            # The longest run of consecutive pitches whose middle moves on smoothly is the pillar (a row that
+            # caught the windscreen's corner or the header instead jumps sideways).
+            runs, cur = [], []
+            for r in rows:
+                if cur and (r[0] != cur[-1][0] + 1 or
+                            ((r[1] + r[2]) / 2 - (cur[-1][1] + cur[-1][2]) / 2).length > 0.04):
+                    runs.append(cur)
+                    cur = []
+                cur.append(r)
+            if cur:
+                runs.append(cur)
+            run = max(runs, key=len, default=[])
+            if len(run) < 5:
+                print(f"pillar trim {'L' if sd < 0 else 'R'}: no pillar found ({len(run)} rows)")
+                continue
+            # Higher up, the rays past the pillar often meet the roof or door frame instead of the side glass,
+            # so the rows above stop counting halfway up the pillar ("half a pillar"). Carry on along the
+            # pillar's windscreen edge (still clear: glass, then the pillar) with the last row's width, while
+            # that edge rises and moves on smoothly, up to the header (no windscreen in the row any more).
+            width = run[-1][2] - run[-1][1]
+            added = 0
+            for pi in range(run[-1][0] + 1, 56):
+                state, first, _, uv, puv = scan(sd, pi)
+                prev = run[-1][1]
+                if state < 2 or first.y <= prev.y or (first - prev).length > 0.05 or (first - e).length > 1.6:
+                    break
+                run.append((pi, first, first + width, uv, puv))
+                added += 1
+            # Smooth the edges over 5 rows (the rays step the edges by a few mm).
+            def avg(i, j):
+                pts = [run[k][j] for k in range(max(0, i - 2), min(len(run), i + 3))]
+                return sum(pts, Vector()) / len(pts)
+            edges = [(avg(i, 1), avg(i, 2)) for i in range(len(run))]
+            # The ends run on along the pillar (direction of the last few rows) to the dash and the header.
+            k_ = min(4, len(edges) - 1)
+            mid = lambda i: (edges[i][0] + edges[i][1]) / 2
+            down = (mid(0) - mid(k_)).normalized()
+            up = (mid(-1) - mid(-1 - k_)).normalized()
+            # 3 cm on into the dash: where the dash top slopes, the door-side corner stopped above it and a
+            # wedge of the sill plus a sliver of the body showed at the pillar's foot (DingDing).
+            lo_end = reach(mid(0) + (e - mid(0)).normalized() * lift, down) + 0.03
+            # Up to the header or roof: the rows often stop short of it (DingDing L, TrailBurner: a gap under
+            # the roof, 2026-10-27); reach() stops 2 cm into whatever it meets first.
+            hi_end = reach(mid(-1) + (e - mid(-1)).normalized() * lift, up, most=0.30)
+            edges.insert(0, (edges[0][0] + down * lo_end, edges[0][1] + down * lo_end))
+            edges.append((edges[-1][0] + up * hi_end, edges[-1][1] + up * hi_end))
+            secs = []
+            for a, b in edges:            # a: windscreen side, b: door side
+                across = (b - a).normalized()
+                extra = max(0.0, min_w - (b - a).length - overlap - overlap_out)
+                lo, ro = a - across * overlap, b + across * (overlap_out + extra)
+                lo, ro = lo + across * shift, ro + across * shift   # per car: further towards the door
+                c = (lo + ro) / 2
+                inward = (e - c).normalized()
+                lo, ro = lo + (e - lo).normalized() * lift, ro + (e - ro).normalized() * lift
+                li = lo + inward * depth + (c - lo) * 0.3
+                ri = ro + inward * depth + (c - ro) * 0.3
+                secs.append((lo, li, ri, ro))
+            verts = [tuple(v) for s_ in secs for v in s_]
+            faces = []
+            for i in range(len(secs) - 1):
+                a, b = 4 * i, 4 * (i + 1)
+                for j in range(4):
+                    faces.append((a + j, a + (j + 1) % 4, b + (j + 1) % 4, b + j))
+            faces.append((0, 1, 2, 3))
+            n = 4 * (len(secs) - 1)
+            faces.append((n + 3, n + 2, n + 1, n))
+            side = "L" if sd < 0 else "R"
+            # Colour: the pillar's paint (middle painted row). The first hit past the windscreen is often its
+            # black rubber seal: the Protector and TrailBurner trims came out a different colour from the
+            # pillars and from each other (2026-10-27).
+            paints = [r[4] for r in run if r[4] is not None]
+            mid_uv = paints[len(paints) // 2] if paints else run[len(run) // 2][3]
+            colour = f"paint ({len(paints)}/{len(run)} rows)" if paints else "trim (no paint on this pillar)"
+            ob = P.mesh_object(f"pillar_trim_{side}", verts, faces, self.paint, uv=mid_uv, smooth=True)
+            # Smooth along the pillar (one section per row: flat shading gave light/dark bands, one per row),
+            # sharp at the four long corners and the end caps.
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(ob.data)
+            sharp = [ed for ed in bm.edges if len(ed.link_faces) == 2
+                     and ed.link_faces[0].normal.angle(ed.link_faces[1].normal, 0.0) > math.radians(35)]
+            bmesh.ops.split_edges(bm, edges=sharp)
+            bm.to_mesh(ob.data)
+            bm.free()
+            w = [(b - a).length for a, b in edges[1:-1]]
+            print(f"pillar trim {side}: {len(run)} rows ({added} along the windscreen edge), pillar {min(w) * 100:.1f}-{max(w) * 100:.1f} cm wide, "
+                  f"ends run on {lo_end * 100:.0f} cm down, {hi_end * 100:.0f} cm up, colour {colour}")
+            made.append(side)
+        return made
+
+    def inner_skins(self, eye, seat=(0.0, 0.02, -0.12), max_dist=1.6, inset=0.003):
+        """The game draws the car body from outside only, so from the seat the body's own pillars, window
+        frames and roof edges are see-through wherever our lining doesn't cover them: the outside shows
+        through the A pillars, the corners beside the windscreen and gaps above it ("pillars not connected").
+        Rays from the eye (standard and with the usual seat offset, head straight and turned) find every
+        painted or trim body face seen from behind with nothing of ours and no glass in front of it, within
+        max_dist; each gets a copy facing inwards with the body's own paint layout (one ring of back-facing
+        neighbours too, so no single faces are missed between rays), inset mm towards the cabin. From inside
+        the body then looks like it does from outside. Run before frame_covers (it treats these as ours)."""
+        import bmesh
+        from mathutils.bvhtree import BVHTree
+        from mathutils.interpolate import poly_3d_calc
+        dg = bpy.context.evaluated_depsgraph_get()
+        verts, polys = [], []
+        for ob in bpy.data.objects:
+            if ob.type != "MESH" or ob == self.body:
+                continue
+            ev = ob.evaluated_get(dg)
+            me = ev.to_mesh()
+            base = len(verts)
+            verts.extend(ob.matrix_world @ v.co for v in me.vertices)
+            polys.extend([base + i for i in p.vertices] for p in me.polygons)
+            ev.to_mesh_clear()
+        ours = BVHTree.FromPolygons(verts, polys)
+        S = self.sampler
+        U2B3 = carref.U2B3
+
+        def kind(index, loc):
+            poly = S.me.polygons[index]
+            w = poly_3d_calc([S.me.vertices[v].co for v in poly.vertices], loc)
+            uv = (sum(a * S.uv[li].uv[0] for a, li in zip(w, poly.loop_indices)),
+                  sum(a * S.uv[li].uv[1] for a, li in zip(w, poly.loop_indices)))
+            r, g, b = S._px(S.mask, S.mask_px, uv)
+            return "glass" if g > 0.5 else "light" if r > 0.5 else "paint" if b > 0.5 else "trim"
+
+        neck = Vector((0, -0.07, -0.10))
+        eyes = []
+        for off in (Vector(), Vector(seat)):
+            for hy in (0.0, -35.0, 35.0):
+                r = Matrix.Rotation(math.radians(hy), 3, "Y")
+                eyes.append(Vector(eye) + off - neck + r @ neck)
+        found = set()
+        for e in eyes:
+            o0 = U2B3 @ e
+            for yaw in [a * 0.5 for a in range(-230, 231)]:
+                for pitch in [a * 0.5 for a in range(-110, 91)]:
+                    cp = math.cos(math.radians(pitch))
+                    d = (U2B3 @ Vector((math.sin(math.radians(yaw)) * cp, math.sin(math.radians(pitch)),
+                                        math.cos(math.radians(yaw)) * cp))).normalized()
+                    hb, ho = S.bvh.ray_cast(o0, d, max_dist), ours.ray_cast(o0, d, max_dist)
+                    if hb[0] is None:
+                        continue
+                    if ho[0] is not None and ho[3] <= hb[3] and ho[1].dot(d) < 0:
+                        continue        # one of our parts in front
+                    if hb[1].dot(d) >= 0 and kind(hb[2], hb[0]) in ("paint", "trim"):
+                        found.add(hb[2])
+        # One ring of neighbours seen from behind as well (thin faces fall between the rays).
+        bm = bmesh.new()
+        bm.from_mesh(S.me)
+        bm.faces.ensure_lookup_table()
+        # Faces one of our parts already copies (the wiper copies: same place, facing the other way) stay
+        # out: two copies would flicker.
+        def covered(fi):
+            f = S.me.polygons[fi]
+            h = ours.ray_cast(f.center - f.normal * 0.0003, f.normal, 0.0006)
+            return h[0] is not None and h[1].dot(f.normal) < -0.9
+        small = {fi for fi in found if covered(fi)}
+        found -= small
+        e0 = U2B3 @ Vector(eye)
+        grown = set(found)
+        for fi in found:
+            for v in bm.faces[fi].verts:
+                for f in v.link_faces:
+                    if f.index in grown or f.index in small:
+                        continue
+                    c = f.calc_center_median()
+                    if (c - e0).length < max_dist and f.normal.dot(c - e0) > 0 and \
+                            kind(f.index, c) in ("paint", "trim") and not covered(f.index):
+                        grown.add(f.index)
+        bm.free()
+
+        # A face counts only if it's painted or trim all over (a ray near a glass face's edge can read the
+        # paint next to it in the livery), and nothing of the glass lies on it (some cars have an opaque
+        # face on the window glass, in the same place): otherwise the windows would be covered.
+        def opaque(pi):
+            poly = S.me.polygons[pi]
+            vs = [S.me.vertices[v].co for v in poly.vertices]
+            return all(kind(pi, q) in ("paint", "trim") for q in [poly.center] + [poly.center.lerp(v, 0.8) for v in vs])
+
+        GLASS_ON = float(os.environ.get("GLASS_ON", "0.015"))
+
+        def on_glass(pi):
+            poly = S.me.polygons[pi]
+            vs = [S.me.vertices[v].co for v in poly.vertices]
+            n = poly.normal
+            for q in [poly.center] + [poly.center.lerp(v, 0.7) for v in vs]:
+                for sgn in (1, -1):
+                    h = S.bvh.ray_cast(q - n * sgn * GLASS_ON, n * sgn, 2 * GLASS_ON)
+                    if h[0] is not None and h[2] != pi and kind(h[2], h[0]) == "glass":
+                        return True
+            return False
+
+        grown = {pi for pi in grown if opaque(pi) and not on_glass(pi)}
+        dbg = os.environ.get("SKIN_FACE")
+        if dbg:
+            fi = int(dbg)
+            print(f"SKIN_FACE {fi}: found {fi in found} covered {covered(fi)} grown {fi in grown}")
+        B2U = U2B3.inverted()
+        e_ = Vector(eye)
+        verts, faces, uvs = [], [], []
+        for pi in sorted(grown):
+            poly = S.me.polygons[pi]
+            base = len(verts)
+            for vi, li in zip(reversed(poly.vertices), reversed(poly.loop_indices)):   # reversed: facing in
+                p = B2U @ S.me.vertices[vi].co
+                verts.append(tuple(p + (e_ - p).normalized() * inset))
+                uvs.append(tuple(S.uv[li].uv))
+            faces.append(tuple(range(base, base + len(poly.vertices))))
+        if faces:
+            P.mesh_object("inner_skins", verts, faces, self.paint, uvs=uvs, closed=False)
+        print(f"inner skins: {len(found)} body faces seen from behind, {len(faces)} copied with neighbours")
+        return len(faces)
+
+    def mirror_glass(self, name, which, outline, z, pos=(0, 0, 0), rot=None):
+        """A mirror's glass for the mod's mirror cameras: a flat face in the object's x/y plane at local z,
+        facing -z (towards the driver), UVs mirrored left/right (the camera picture shown as a mirror image),
+        node extras mirror = rear / left / right."""
+        xs = [x for x, _ in outline]
+        ys = [y for _, y in outline]
+        uvs = [(1 - (x - min(xs)) / (max(xs) - min(xs)), (y - min(ys)) / (max(ys) - min(ys))) for x, y in outline]
+        mat = P.material("unlit:mirror_" + which, (0.55, 0.60, 0.66), rough=0.2)
+        ob = P.mesh_object(name, [(x, y, z) for x, y in outline], [tuple(range(len(outline)))], mat, uvs=uvs,
+                           closed=False, facing=(0, 0, -1))
+        P.place(ob, pos, rot)
+        ob["mirror"] = which
+        return ob
+
+    def side_mirrors(self, eye, out_min=0.03):
+        """The car's own outside mirrors: small separate body pieces outside the cabin, ahead of the eye and
+        around eye height, with a flat face looking back at the driver. Each gets a mirror glass 3 mm in front
+        of that face (a rectangle inside its outline, so a rim stays). Returns the sides found."""
+        import bmesh
+        B2U = carref.U2B3.inverted()
+        bm = bmesh.new()
+        bm.from_mesh(self.body.data)
+        bm.verts.ensure_lookup_table()
+        seen, best = set(), {}
+        e = Vector(eye)
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            stack, isl = [v], []
+            seen.add(v.index)
+            while stack:
+                a = stack.pop()
+                isl.append(a)
+                for ed in a.link_edges:
+                    o = ed.other_vert(a)
+                    if o.index not in seen:
+                        seen.add(o.index)
+                        stack.append(o)
+            if not 8 <= len(isl) <= 600:
+                continue
+            pts = [B2U @ q.co for q in isl]
+            lo = Vector([min(p[i] for p in pts) for i in range(3)])
+            hi = Vector([max(p[i] for p in pts) for i in range(3)])
+            c = (lo + hi) / 2
+            if max(hi - lo) > 0.45 or abs(c.x) < self.half + out_min or not (e.z - 0.2 < c.z < e.z + 1.3)                     or not (e.y - 0.65 < c.y < e.y + 0.15):
+                continue
+            # The face(s) looking back at the driver: the largest flat group facing backwards.
+            faces = {f for q in isl for f in q.link_faces}
+            back = []
+            for f in faces:
+                n = (B2U @ f.normal).normalized()
+                fc = B2U @ f.calc_center_median()
+                if n.z < -0.55 and n.dot(e - fc) > 0:
+                    back.append((f, n, fc))
+            if not back:
+                continue
+            f0, n0, _ = max(back, key=lambda t: t[0].calc_area())
+            plane = [(f, n, fc) for f, n, fc in back if n.dot(n0) > 0.97]
+            area = sum(f.calc_area() for f, _, _ in plane)
+            if area < 0.004:
+                continue
+            side = "left" if c.x < 0 else "right"
+            score = area - 0.02 * abs(c.y - e.y)
+            if side not in best or score > best[side][0]:
+                best[side] = (score, plane, n0)
+        found = []
+        for side, (_, plane, n0) in best.items():
+            # Plane axes: a across (driver's right), b up; the glass is the outline's bounding box, 12% in.
+            ax = n0.cross(Vector((0, 1, 0))).normalized()
+            bx = ax.cross(n0).normalized()
+            vs = {q for f, _, _ in plane for q in f.verts}
+            pts = [B2U @ q.co for q in vs]
+            o = sum(pts, Vector()) / len(pts)
+            us = [(p - o).dot(ax) for p in pts]
+            ws_ = [(p - o).dot(bx) for p in pts]
+            # The glass follows the face's own outline (convex hull; many mirrors have cut corners), shrunk 24%
+            # towards its middle so a rim stays.
+            hull = _hull2d(list(zip(us, ws_)))
+            hu = sum(p[0] for p in hull) / len(hull)
+            hw = sum(p[1] for p in hull) / len(hull)
+            outline = [(hu + (p[0] - hu) * 0.76, hw + (p[1] - hw) * 0.76) for p in hull]
+            u0, u1 = min(p[0] for p in outline), max(p[0] for p in outline)
+            w0, w1 = min(p[1] for p in outline), max(p[1] for p in outline)
+            # Object space: x = a, y = b, -z = towards the driver (n0), placed at the outline's centre.
+            from mathutils import Matrix
+            rot = Matrix((ax, bx, -n0)).transposed()
+            centre = o + n0 * 0.003
+            self.mirror_glass(f"mirror_glass_{side}", side, outline, 0.0, tuple(centre), rot)
+            found.append(f"{side} {abs(u1 - u0) * 100:.0f}x{abs(w1 - w0) * 100:.0f} cm at ({o.x:+.2f}, {o.y:.2f}, {o.z:+.2f})")
+        bm.free()
+        print(f"side mirrors: {', '.join(found) if found else 'none found'}")
+        return found
+
+    def rear_view(self, eye, seen_min=0.35):
+        """What the rear-view mirror would show from the driver's eye, like in a real car: the cabin and out
+        through the rear window. Rays from the eye reflected off the mirror glass: blocked by our parts and by
+        body faces the game draws (seen from the front, not glass), through glass and through body faces seen
+        from behind (the game doesn't draw those). If less than seen_min of them get out of the car (no rear
+        window, a solid cab back, a canvas tilt), the mirror shows the road behind instead: node extras
+        view = road and vx/vy/vz = a camera spot just behind the car (car space, game coordinates); else view = car."""
+        from mathutils.bvhtree import BVHTree
+        from mathutils.interpolate import poly_3d_calc
+        ob = bpy.data.objects.get("mirror_glass_rear")
+        if ob is None:
+            return None
+        U2B3 = carref.U2B3
+        B2U = U2B3.inverted()
+        dg = bpy.context.evaluated_depsgraph_get()
+        verts, polys, owner = [], [], []
+        for o in bpy.data.objects:
+            if o.type != "MESH" or o == self.body or o == ob:
+                continue
+            ev = o.evaluated_get(dg)
+            me = ev.to_mesh()
+            base = len(verts)
+            verts.extend(o.matrix_world @ v.co for v in me.vertices)
+            polys.extend([base + i for i in p.vertices] for p in me.polygons)
+            owner.extend([o.name] * len(me.polygons))
+            ev.to_mesh_clear()
+        ours = BVHTree.FromPolygons(verts, polys)
+        S = self.sampler
+        blockers = {}
+
+        def kind(index, loc):
+            poly = S.me.polygons[index]
+            w = poly_3d_calc([S.me.vertices[v].co for v in poly.vertices], loc)
+            uv = (sum(a * S.uv[li].uv[0] for a, li in zip(w, poly.loop_indices)),
+                  sum(a * S.uv[li].uv[1] for a, li in zip(w, poly.loop_indices)))
+            r, g, b = S._px(S.mask, S.mask_px, uv)
+            return "glass" if g > 0.5 else "light" if r > 0.5 else "paint" if b > 0.5 else "trim"
+
+        gv = [ob.matrix_world @ v.co for v in ob.data.vertices]   # Blender space
+        c = sum(gv, Vector()) / len(gv)
+        n = (ob.matrix_world.to_3x3() @ ob.data.polygons[0].normal).normalized()
+        e = U2B3 @ Vector(eye)
+        if n.dot(e - c) < 0:
+            n = -n
+        seen = total = 0
+        for i in range(7):
+            for j in range(4):
+                # a point on the glass: bilinear over its 4 corners, 85% of the way out from the centre
+                a, b_ = i / 6, j / 3
+                q = (gv[0] * (1 - a) + gv[1] * a) * (1 - b_) + (gv[3] * (1 - a) + gv[2] * a) * b_
+                q = c.lerp(q, 0.85)
+                v = (q - e).normalized()
+                r = v - 2 * v.dot(n) * n
+                o, out = q + n * 0.005, True
+                for _ in range(30):
+                    hb, ho = S.bvh.ray_cast(o, r, 20.0), ours.ray_cast(o, r, 20.0)
+                    db = hb[3] if hb[0] is not None else 1e9
+                    do = ho[3] if ho[0] is not None else 1e9
+                    if db == 1e9 and do == 1e9:
+                        break
+                    if do <= db:
+                        if ho[1].dot(r) < 0:
+                            out = False
+                            blockers[owner[ho[2]]] = blockers.get(owner[ho[2]], 0) + 1
+                            break
+                        o = ho[0] + r * 1e-4
+                        continue
+                    if hb[1].dot(r) < 0 and kind(hb[2], hb[0]) != "glass":
+                        out = False
+                        blockers["car body"] = blockers.get("car body", 0) + 1
+                        break
+                    o = hb[0] + r * 1e-4
+                total += 1
+                seen += out
+        frac = seen / max(total, 1)
+        if blockers:
+            print("rear view blocked by: " + ", ".join(f"{k_} {v_}" for k_, v_ in sorted(blockers.items(), key=lambda kv: -kv[1])[:5]))
+        if frac >= seen_min:
+            ob["view"] = "car"
+            print(f"rear view: {frac * 100:.0f}% of the mirror looks out of the car: shows the cabin and rear window")
+            return "car"
+        pts = [B2U @ v.co for v in self.body.data.vertices]
+        zmin = min(p.z for p in pts)
+        ytop = max(p.y for p in pts)
+        cg = B2U @ c
+        ob["view"] = "road"
+        ob["vx"], ob["vy"], ob["vz"] = 0.0, round(min(cg.y - 0.1, ytop - 0.1), 3), round(zmin - 0.05, 3)
+        print(f"rear view: only {frac * 100:.0f}% of the mirror looks out of the car: shows the road from "
+              f"({ob['vx']}, {ob['vy']}, {ob['vz']})")
+        return "road"
 
     def wipers(self, blades, arms):
         """Closed copies of the body's wipers (which are single-sided and outside the glass).

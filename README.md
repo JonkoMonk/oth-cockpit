@@ -10,7 +10,7 @@ Works with keyboard, controller or steering wheel. With [OTH Wheel](https://gith
 
 ## Download and install
 
-From [Nexus Mods](https://www.nexusmods.com/overthehill/mods/90) or the [Releases](../../releases) page: `OTH-Cockpit-v…-alpha.zip`, or `OTH-Wheel-and-Cockpit-v….zip` for both mods.
+The one-click installer is on the [Releases](../../releases) page (Nexus Mods blocks zips with install scripts): `OTH-Cockpit-v…-alpha.zip`, or `OTH-Wheel-and-Cockpit-v….zip` for both mods. [Nexus Mods](https://www.nexusmods.com/overthehill/mods/90) has a version to copy in by hand.
 
 1. Close the game and extract the zip.
 2. Double-click `Install.bat` and follow the pop-ups. It finds the game, installs MelonLoader if you have no mod loader (or uses your BepInEx), and never changes original game files.
