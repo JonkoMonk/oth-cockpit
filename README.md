@@ -2,7 +2,7 @@
 
 Sit **inside** your car in **over the hill** (Funselektor, Steam): a first-person view with a real interior in the game's low-poly style. Working dials (speed, revs, fuel, outside temperature), warning lights, a gear display, and a steering wheel, pedals and levers that move with your input. Painted parts take your car's livery, dust and mud. Every car in the game has a cockpit.
 
-Watch it in action: [mod spotlight video](https://youtu.be/rHvPhiTygKQ). Download: [OTH Cockpit on Nexus Mods](https://www.nexusmods.com/overthehill/mods/90).
+Watch it in action: [mod spotlight video](https://youtu.be/rHvPhiTygKQ) and the [November update](https://youtu.be/gRxpiDNqJK0) (smart camera, wheel in the menus, mirrors). Download: [OTH Cockpit on Nexus Mods](https://www.nexusmods.com/overthehill/mods/90).
 
 Works with keyboard, controller or steering wheel. With [OTH Wheel](https://github.com/JonkoMonk/oth-wheel) ([Nexus Mods](https://www.nexusmods.com/overthehill/mods/83)) the cockpit's steering wheel turns exactly like your real one.
 
@@ -23,6 +23,7 @@ Uninstall: `Uninstall.bat`. The installer lives in the OTH Wheel repository; bot
 - **Get in / out:** F6, or zoom in past the closest chase view / zoom out.
 - **Look around:** mouse or gamepad right stick; the head turns back to the front by itself and leans into corners a bit.
 - **Seat:** numpad 8/2, 4/6, 9/3 move it; 7/1 tilt the view; +/- zoom.
+- **Mirrors:** the rear-view and side mirrors show what's behind you. `[Mirrors] Quality` (Low, Medium, High, Ultra) in the settings file to suit your PC; `[Mirrors] Enabled = false` switches them off.
 - Settings: `UserData\OthCockpit\jonkomonk.oth.cockpit.cfg` (MelonLoader) or `BepInEx\config\jonkomonk.oth.cockpit.cfg`, re-read while the game runs.
 
 ## How it's made
