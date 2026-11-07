@@ -9,6 +9,11 @@ PATCH for fixes only. 1.0.0 when every car is finished and it leaves alpha.
 - 0.5.0: customise the interior
 - 1.0.0: out of alpha
 
+## 0.4.1-alpha (2026-11-07)
+
+- Rear-view mirror: it looked at the ground behind the car; it now looks back along the road.
+  `[Mirrors] RearViewTilt` sets how far up or down (default -3 degrees).
+
 ## 0.4.0-alpha (2026-11-06; includes 0.3.1)
 
 - Known: the rear-view mirror looks too far down.

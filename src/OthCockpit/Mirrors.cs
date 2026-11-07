@@ -26,6 +26,7 @@ internal static class Mirrors
         public Vector3 AimNormal;            // car-local: the normal a driver would set (side mirrors)
         public bool Road;                    // rear-view mirror showing the road from behind the car
         public Vector3 RoadFrom;             // car-local camera spot for Road
+        public Quaternion RoadFix = Quaternion.identity;   // car-local: lifts the road view to [Mirrors] RearViewTilt
         public float Width, Height;          // metres
         public Camera Cam;
         public RenderTexture Texture;
@@ -135,6 +136,19 @@ internal static class Mirrors
                     ? new Vector3(node.Num("vx", 0f), node.Num("vy", 1.5f), node.Num("vz", -2.5f))
                     : RoadSpot(car, centreCar);
         }
+        // The glass is aimed down through the cabin at the rear window, which pointed the road view at the
+        // ground behind the car (2026-11-06). Keep how it moves with the head, but start it from this tilt.
+        var roadFix = Quaternion.identity;
+        if (road)
+        {
+            var n = car.InverseTransformDirection(glass.TransformDirection(normal)).normalized;
+            if (Vector3.Dot(n, eye - centreCar) < 0f) n = -n;
+            var neutral = Vector3.Reflect((centreCar - eye).normalized, n);
+            var flat = new Vector2(neutral.x, neutral.z).magnitude;
+            var wanted = new Vector3(neutral.x, flat * Mathf.Tan(Settings.RearViewTilt.Value * Mathf.Deg2Rad), neutral.z).normalized;
+            roadFix = Quaternion.FromToRotation(neutral, wanted);
+            Plugin.Info($"rear-view road: the glass aims {Mathf.Asin(neutral.y) * Mathf.Rad2Deg:0.0} deg, shown at {Settings.RearViewTilt.Value:0.0} deg");
+        }
 
         // Texture: rear 512 wide, side 320 high (times the quality's resolution), the glass's shape.
         float res = _level.Resolution;
@@ -182,7 +196,7 @@ internal static class Mirrors
         return new Mirror
         {
             Which = which, Glass = glass, Centre = centre, Normal = normal, Up = up, AimNormal = aim,
-            Road = road, RoadFrom = roadFrom, Width = width, Height = height, Cam = cam, Texture = rt,
+            Road = road, RoadFrom = roadFrom, RoadFix = roadFix, Width = width, Height = height, Cam = cam, Texture = rt,
         };
     }
 
@@ -231,6 +245,7 @@ internal static class Mirrors
             float dist = view.magnitude;
             if (dist < 0.05f) continue;
             var look = Vector3.Reflect(view / dist, normal);
+            if (m.Road) look = _car.rotation * m.RoadFix * Quaternion.Inverse(_car.rotation) * look;
             var up = Vector3.ProjectOnPlane(_car.up, look);
             var from = m.Road ? _car.TransformPoint(m.RoadFrom) : centre + normal * 0.005f;
             m.Cam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(look, up.sqrMagnitude > 1e-6f ? up : Vector3.up));
