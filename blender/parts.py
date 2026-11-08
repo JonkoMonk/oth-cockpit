@@ -221,7 +221,9 @@ def check_flicker(exclude=(), eye=None):
             key = (round(n.x, 2), round(n.y, 2), round(n.z, 2), round(d, 3))
             # Outline in the plane's own 2D axes, as close to the car's axes as possible (diagonal axes
             # would blow up the outline of a square panel).
-            a1 = min((Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))), key=lambda a: abs(n.dot(a)))
+            # (rounded: for a face along an axis two axes tie, and float noise picked different ones for faces
+            # in the same plane, so faces far apart were compared in different 2D frames and "overlapped")
+            a1 = min((Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))), key=lambda a: round(abs(n.dot(a)), 3))
             u = (a1 - n * n.dot(a1)).normalized()
             v = n.cross(u)
             uv2 = [(p.dot(u), p.dot(v)) for p in pts]

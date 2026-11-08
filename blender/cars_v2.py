@@ -34,7 +34,7 @@ CARS = {
     # Land Rover Defender 90: binnacle pod over a flat four-spoke wheel, vent flaps, levers forest, RHD.
     "Protector": dict(game="Protector", side=1, character="Defender: pod over a flat wheel, vent flaps, yellow diff-lock knob",
                       dash="plastic", cluster="pod", wheel="four", wheel_tilt=40, seats="headrest", seat_pattern="ribs",
-                      handbrake="lever", features=["vent_flaps"], extra_levers=[(0.15, "knob3")], eye_y=1.64, eye_z=-0.30, wheel_drop=0.47, wheel_r=0.20,
+                      handbrake="lever", features=["vent_flaps"], extra_levers=[(0.15, "knob3")], eye_y=1.64, eye_z=-0.30, wheel_drop=0.42, wheel_r=0.20,   # drop 0.47: the flat wheel was below the view
                       colors=dict(dash=(0.20, 0.20, 0.22), seat=(0.30, 0.31, 0.33), seat2=(0.40, 0.41, 0.43),
                                   door=(0.26, 0.26, 0.28), spoke=(0.20, 0.20, 0.22))),
     # Land Rover Series IIA: bare painted steel, dials in the middle, canvas roof, no door cards, RHD.
@@ -59,6 +59,7 @@ CARS = {
     "TrailBurner": dict(game="TrailBurner", side=-1, character="Square-body Blazer: charcoal plastic dash, saddle-tan seats, CB radio, pine tree",
                         dash="plastic", cluster="wide", wheel="two", hub="bar", seats="headrest", seat_pattern="ribs", handbrake="pull",
                         automatic=True, shifter="column", features=["pine_freshener"],
+                        dials="cream",   # black faces in the black dash were hard to read in daylight (review 2026-11-07)
                         colors=dict(dash=(0.17, 0.16, 0.16), pad=(0.12, 0.115, 0.115), panel=(0.10, 0.10, 0.11),
                                     seat=(0.62, 0.46, 0.30), seat2=(0.70, 0.54, 0.36), door=(0.52, 0.38, 0.25),
                                     rim=(0.14, 0.13, 0.13), spoke=(0.14, 0.13, 0.13), carpet=(0.36, 0.27, 0.18)), carpet=True),
@@ -133,6 +134,7 @@ CARS = {
                     dash="plastic", cluster="tubes", wheel="two", rim_thick=0.013, seats="headrest", seat_pattern="tartan",
                     handbrake="lever", features=["roll_cage"], extra_levers=[(0.15, "knob")],
                     nudge_reach=0.06,   # lets the speedo drop from the rim line into the wheel's opening
+                    fit_sides=True,     # body curves in hard at the rear corners (review 2026-11-08)
                     colors=dict(dash=(0.15, 0.15, 0.16), pad=(0.15, 0.15, 0.16), seat=(0.42, 0.28, 0.20),
                                 seat2=(0.62, 0.44, 0.30), door=(0.36, 0.25, 0.18), cage=(0.80, 0.22, 0.16))),
     # Fiat Panda 4x4: no dash, a full-width fabric shelf, a tiny instrument box, deckchair seats.

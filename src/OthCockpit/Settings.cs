@@ -20,7 +20,7 @@ internal static class Settings
     public static ConfigEntry<bool> MirrorsOn, SideMirrors;
     public static ConfigEntry<MirrorQuality> MirrorQualityLevel;
     public static ConfigEntry<RearViewMode> RearView;
-    public static ConfigEntry<float> MirrorResolution, MirrorUpdateEvery, RearViewTilt;
+    public static ConfigEntry<float> MirrorResolution, MirrorUpdateEvery, RearViewTilt, MirrorWide, RearViewSize;
 
     public static void Bind(ConfigFile cfg)
     {
@@ -65,6 +65,13 @@ internal static class Settings
             "Road = only the road behind the car. Auto = Road (the default).");
         RearViewTilt = cfg.Bind("Mirrors", "RearViewTilt", -3f,
             "Where the rear-view mirror's road view points, degrees: 0 = level with the horizon in the middle, negative = more road, positive = more sky.");
+        // A real flat mirror shows a sliver of the world: realistic, but too little to use (JonkoMonk, 2026-11-07).
+        MirrorWide = cfg.Bind("Mirrors", "WideAngle", 2.2f,
+            "How much the mirrors show, like a convex wide-angle mirror: 1 = a real flat mirror (realistic, shows little), " +
+            "2.2 = about twice as much (default), up to 3.");
+        RearViewSize = cfg.Bind("Mirrors", "RearViewSize", 1.5f,
+            "Size of the rear-view mirror: 1 = the model's real size, 1.5 = half as big again (default), up to 2. " +
+            "Bigger shows a bigger picture but hides more of the windscreen.");
         SideMirrors = cfg.Bind("Mirrors", "SideMirrors", true, "(Custom quality) Also the outside mirrors (false = only the rear-view mirror: cheaper).");
         MirrorResolution = cfg.Bind("Mirrors", "Resolution", 1f,
             "(Custom quality) Sharpness of the mirror pictures: 1 = normal, 0.5 = half (faster), 2 = double.");

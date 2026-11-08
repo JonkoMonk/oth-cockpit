@@ -418,6 +418,11 @@ class Kit:
     # along the front door (section_z) and used for every side panel, so they all line up.
     section_z = None
     half = 0.85
+    # Per car (cfg fit_sides): side panels bent to the body along their length + a headliner that follows the
+    # roof (fitted_panel, headliner). On for the Polyana (review 2026-11-08). Tried on all 23: less of the
+    # game's paint shows on 21 cars, but the Blast Wagon's cab corners got worse and some cars got new
+    # flicker, so each car gets it only after its own check.
+    fit_sides = False
 
     def wall_x(self, y, s=-1):
         """Inner |x| of the body's side at height y (None where it's glass all along the door)."""
@@ -480,8 +485,202 @@ class Kit:
             x0, x1 = sorted((s * w, s * (w + thick)))
             return P.box(name, (x0, y0, z0), (x1, y1, z1), mat or self.paint, uv=uv)
         prof = self.clear_glass(self.wall_profile(y0, y1, s), y0, y1, z0, z1, s)
+        if self.fit_sides:
+            return self.fitted_panel(name, prof, z0, z1, s, mat or self.paint, uv, thick)
         outline = [(s * (x - 0.012), y) for y, x in prof] + [(s * (x - 0.012 + thick), y) for y, x in reversed(prof)]
         return P.prism(name, outline, "z", z0, z1, mat or self.paint, uv=uv)
+
+    def facing_hit(self, origin, direction, axis, max_dist=10.0, least=0.4):
+        """(game point, kind) where a ray hits the body, only if the surface there faces along `axis` (0 = x for
+        a side wall, 1 = y for the roof) by at least `least`; else (None, None). A ray along the side at a
+        panel's end otherwise hit the back wall of a cab (Blast Wagon) and bent the panel away from the corner."""
+        p, _, kind = self.sampler.hit(origin, direction, max_dist)
+        if p is None:
+            return None, None
+        o, d = carref.U2B3 @ Vector(origin), (carref.U2B3 @ Vector(direction)).normalized()
+        _, n, _, _ = self.sampler.bvh.ray_cast(o, d, max_dist)
+        if n is None or abs((carref.U2B3.inverted() @ n).normalized()[axis]) < least:
+            return None, None
+        return p, kind
+
+    def headliner(self, hw, roof, z0, z1, liner, nx=14, step=0.06):
+        """The roof lining, following the roof down where it curves at the edges and the rear corners (a flat
+        board 3 cm under the highest point poked through there, and the game's paint showed in the corners:
+        Polyana review 2026-11-08). Face 1.2 cm under the roof, never more than 3 cm above the old board."""
+        nz = max(2, int(math.ceil((z1 - z0) / step)) + 1)
+        xs = [-hw + 0.01 + (2 * hw - 0.02) * i / (nx - 1) for i in range(nx)]
+        zs = [z0 + (z1 - z0) * j / (nz - 1) for j in range(nz)]
+        face = []
+        for z in zs:
+            row = []
+            for x in xs:
+                y = roof - 0.03
+                p, kind = self.facing_hit((x, roof - 0.30, z), (0, 1, 0), 1, 0.40)
+                if p is not None and kind != "light" and roof - 0.30 < p.y - 0.012 < y:
+                    y = p.y - 0.012
+                row.append(y)
+            face.append(row)
+        verts = [(x, face[j][i], z) for j, z in enumerate(zs) for i, x in enumerate(xs)]
+        off = len(verts)
+        verts += [(x, face[j][i] + 0.025, z) for j, z in enumerate(zs) for i, x in enumerate(xs)]
+
+        def v(j, i, top=0):
+            return top * off + j * nx + i
+        faces = []
+        for j in range(nz - 1):
+            for i in range(nx - 1):
+                faces.append((v(j, i), v(j + 1, i), v(j + 1, i + 1), v(j, i + 1)))
+                faces.append((v(j, i, 1), v(j, i + 1, 1), v(j + 1, i + 1, 1), v(j + 1, i, 1)))
+        for j in range(nz - 1):
+            faces.append((v(j, 0), v(j, 0, 1), v(j + 1, 0, 1), v(j + 1, 0)))
+            faces.append((v(j, nx - 1), v(j + 1, nx - 1), v(j + 1, nx - 1, 1), v(j, nx - 1, 1)))
+        for i in range(nx - 1):
+            faces.append((v(0, i), v(0, i + 1), v(0, i + 1, 1), v(0, i, 1)))
+            faces.append((v(nz - 1, i), v(nz - 1, i, 1), v(nz - 1, i + 1, 1), v(nz - 1, i + 1)))
+        dropped = max(roof - 0.03 - y for row in face for y in row)
+        if dropped > 0.005:
+            print(f"headliner: follows the roof down up to {dropped * 100:.1f} cm at its edges")
+        return P.mesh_object("headliner", verts, faces, liner)
+
+    def fitted_panel(self, name, prof, z0, z1, s, mat, uv, thick, step=0.03):
+        """A side panel bent to the body along its length. The cross-section comes from the front door, but
+        behind it the body can be narrower: the Polyana's rear side lining stood 3-8 cm out through the body at
+        the sill, and at the rounded rear corner (C pillar, roof edge) up to 19 cm; from inside, the game's own
+        paint showed through there (review 2026-11-08). At each station along z the face moves in to the body
+        where it's closer than the door's cross-section (by up to 30 cm above the lowest 25 cm, 10 cm lower
+        down: further in there is a wheel arch or a seat box, not the side)."""
+        n = max(2, int(math.ceil((z1 - z0) / step)) + 1)
+        zs = [z0 + (z1 - z0) * j / (n - 1) for j in range(n)]
+        floor_y = prof[0][0]
+        grid, moved = [], 0.0
+        for z in zs:
+            col = []
+            for y, x in prof:
+                reach = 0.10 if y < floor_y + 0.25 else 0.30
+                best = x
+                for dz in (-0.02, 0.0, 0.02):
+                    zz = min(max(z + dz, z0 + 0.005), z1 - 0.005)
+                    p, kind = self.facing_hit((0.0, y, zz), (s, 0, 0), 0)
+                    if p is not None and kind != "light" and x - reach < abs(p.x) < best:
+                        best = abs(p.x)
+                moved = max(moved, x - best)
+                col.append(best)
+            grid.append(col)
+        if moved > 0.005:
+            print(f"side fit: {name} bent in up to {moved * 100:.1f} cm (body narrower there than at the door)")
+        ny = len(prof)
+        verts = []
+        for j, z in enumerate(zs):
+            for i, (y, _) in enumerate(prof):
+                verts.append((s * (grid[j][i] - 0.012), y, z))
+        off = len(verts)
+        for j, z in enumerate(zs):
+            for i, (y, _) in enumerate(prof):
+                verts.append((s * (grid[j][i] - 0.012 + thick), y, z))
+
+        def v(j, i, outer=0):
+            return outer * off + j * ny + i
+        faces = []
+        for j in range(n - 1):
+            for i in range(ny - 1):
+                faces.append((v(j, i), v(j, i + 1), v(j + 1, i + 1), v(j + 1, i)))
+                faces.append((v(j, i, 1), v(j + 1, i, 1), v(j + 1, i + 1, 1), v(j, i + 1, 1)))
+        for j in range(n - 1):   # bottom and top edges
+            faces.append((v(j, 0), v(j + 1, 0), v(j + 1, 0, 1), v(j, 0, 1)))
+            faces.append((v(j, ny - 1), v(j, ny - 1, 1), v(j + 1, ny - 1, 1), v(j + 1, ny - 1)))
+        for i in range(ny - 1):  # front and rear ends
+            faces.append((v(0, i), v(0, i, 1), v(0, i + 1, 1), v(0, i + 1)))
+            faces.append((v(n - 1, i), v(n - 1, i + 1), v(n - 1, i + 1, 1), v(n - 1, i, 1)))
+        return P.mesh_object(name, verts, faces, mat, uv=uv)
+
+    def pillar_panel(self, name, y0, y1, z0, z1, s, depth=0.025, thick=0.05):
+        """Lining of a pillar between two side windows. A flat panel 1.2 cm inside the skin (side_panel) read as a
+        plain slab standing in front of the window when the pillar is right beside the driver's head (review
+        2026-11-07: DingDing, Trail Burner, Burro). Now a moulded trim: its face comes `depth` into the cabin,
+        narrower than the pillar, with slanted sides back to the window edges, easing out to flat over the top and
+        bottom 6 cm (where the roof edge and the door meet it). Wide panels (a rear corner) stay flat."""
+        self.pillars = getattr(self, "pillars", [])
+        z0, z1 = sorted((z0, z1))
+        if self.section_z is None or z1 - z0 > 0.35:
+            ob = self.side_panel(name, y0, y1, z0, z1, s, thick=thick)
+            self.pillars.append(dict(name=name, s=s, y0=y0, y1=y1, z0=z0, z1=z1, prof=None, depth=0.0, chamfer=0.0))
+            return ob
+        uv = self.uv(name, (0, (y0 + y1) / 2, (z0 + z1) / 2), (s, 0, 0))
+        prof = self.clear_glass(self.wall_profile(y0, y1, s), y0, y1, z0, z1, s)
+        w = z1 - z0
+        c = min(0.035, 0.28 * w)                 # how far the slanted sides reach in from each window edge
+        d = min(depth, 0.22 * w)
+
+        def ease(y):   # small at the ends (never 0: no zero-size faces), 1 from 6 cm in
+            t = min(y - y0, y1 - y) / 0.06
+            t = max(0.0, min(1.0, t))
+            return max(0.12, t * t * (3 - 2 * t))
+
+        verts, rows = [], []
+        for y, x in prof:
+            face = x - 0.012                      # |x| of the flat lining face
+            dd = d * ease(y)
+            cc = c * ease(y)
+            row = [(s * face, y, z0), (s * (face - dd), y, z0 + cc), (s * (face - dd), y, z1 - cc), (s * face, y, z1),
+                   (s * (face + thick), y, z1), (s * (face + thick), y, z0)]
+            rows.append(len(verts))
+            verts += row
+        faces = []
+        for a, b in zip(rows, rows[1:]):
+            for k in range(6):
+                faces.append((a + k, a + (k + 1) % 6, b + (k + 1) % 6, b + k))
+        faces.append(tuple(rows[0] + k for k in range(6)))
+        faces.append(tuple(rows[-1] + k for k in reversed(range(6))))
+        ob = P.mesh_object(name, verts, faces, self.paint, uv=uv)
+        self.pillars.append(dict(name=name, s=s, y0=y0, y1=y1, z0=z0, z1=z1, prof=prof, depth=d, chamfer=c))
+        return ob
+
+    def seat_belt(self, eye):
+        """The driver's seat belt hanging down the pillar beside the head (the B pillar): a dark strap from a
+        metal anchor at shoulder height down into the door, with the buckle tongue on it. It breaks up the big
+        plain pillar face right next to the driver. Returns the pillar's name or None."""
+        pillars = [p for p in getattr(self, "pillars", []) if p["prof"] is not None and p["s"] * eye[0] > 0]
+        # The pillar level with or just behind the eye.
+        near = [p for p in pillars if p["z0"] - 0.15 < eye[2] and (p["z0"] + p["z1"]) / 2 > eye[2] - 0.6]
+        if not near:
+            print("seat belt: no pillar beside the driver")
+            return None
+        p = min(near, key=lambda q: abs((q["z0"] + q["z1"]) / 2 - (eye[2] - 0.15)))
+        s, z0, z1, d, c = p["s"], p["z0"], p["z1"], p["depth"], p["chamfer"]
+        strap_w = 0.046
+        if (z1 - z0) - 2 * c < strap_w + 0.01:
+            print(f"seat belt: {p['name']} too narrow")
+            return None
+        zc = (z0 + z1) / 2
+        top = min(p["y1"] - 0.08, eye[1] - 0.02)
+        bottom = p["y0"] + 0.005
+        if top - bottom < 0.15:
+            print(f"seat belt: {p['name']} too short")
+            return None
+
+        def face_x(y):   # |x| of the pillar's cabin face at height y (with its moulding)
+            t = max(0.0, min(1.0, min(y - p["y0"], p["y1"] - y) / 0.06))
+            return self.prof_x(p["prof"], y) - 0.012 - d * max(0.12, t * t * (3 - 2 * t))
+
+        belt = P.material("lit:seat_belt", (0.055, 0.055, 0.06), rough=0.95)
+        metal = P.material("lit:belt_metal", (0.50, 0.50, 0.52), rough=0.35, metal=0.8)
+        n = 8
+        ys = [bottom + (top - bottom) * i / (n - 1) for i in range(n)]
+        outline = [(s * (face_x(y) - 0.002), y) for y in ys] + [(s * (face_x(y) - 0.005), y) for y in reversed(ys)]
+        P.prism("seat_belt", outline, "z", zc - strap_w / 2, zc + strap_w / 2, belt)
+        # Anchor plate with its bolt at the top, buckle tongue a third of the way down.
+        ya = top + 0.005
+        xa = face_x(ya)
+        P.prism("seat_belt_anchor", [(s * (xa - 0.002), ya - 0.03), (s * (xa - 0.002), ya + 0.025), (s * (xa - 0.009), ya + 0.025),
+                                     (s * (xa - 0.009), ya - 0.03)], "z", zc - 0.031, zc + 0.031, metal)
+        P.place(P.cylinder("seat_belt_bolt", 0.009, 0.006, self.black, n=10), (s * (xa - 0.012), ya + 0.004, zc),
+                P.Ry(90 * s))
+        yt = top - (top - bottom) * 0.38
+        xt = face_x(yt)
+        P.box("seat_belt_tongue", (min(s * (xt - 0.005), s * (xt - 0.012)), yt - 0.045, zc - 0.018),
+              (max(s * (xt - 0.005), s * (xt - 0.012)), yt + 0.01, zc + 0.018), metal)
+        print(f"seat belt: on {p['name']} ({(z1 - z0) * 100:.0f} cm wide, strap {top - bottom:.2f} m)")
+        return p["name"]
 
     def glass_x(self, y, z0, z1, s, face):
         """Most inboard |x| of the body's side glass at height y between z0 and z1 that lies within 3 cm in
@@ -536,10 +735,13 @@ class Kit:
                 gaps.append((rear, edges[0][0]))
             for i, (z0, z1) in enumerate(gaps):
                 if z1 - z0 > 0.02:
-                    self.side_panel(f"pillar{i}_{side}", belt, top, z0, z1, s)
+                    self.pillar_panel(f"pillar{i}_{side}", belt, top, z0, z1, s)
             # Above the windows up to the roof.
             if roof - top > 0.03:
-                self.side_panel(f"roof_edge_{side}", top, roof, rear, front, s)
+                # Bent to the body (fitted_panel), its top edge would lie on a curved roof's inside, on the
+                # copy inner_skins puts there (flicker): stop 1.5 cm short, the headliner follows the roof down.
+                self.side_panel(f"roof_edge_{side}", top, roof - (0.015 if self.fit_sides else 0.0),
+                                rear, front, s)
             # A pillar along the windscreen edge.
             if "a_pillars" not in skip:
                 x = s * (ws["half_w"] + 0.045)
@@ -571,7 +773,10 @@ class Kit:
             if moved:
                 print(f"header: front steps back behind the windscreen glass at {moved} of {n} heights")
         if "headliner" not in skip:
-            P.box("headliner", (-hw + 0.01, roof - 0.03, rear + 0.01), (hw - 0.01, roof - 0.005, ws["top_z"] - 0.13), liner)
+            if not self.fit_sides:
+                P.box("headliner", (-hw + 0.01, roof - 0.03, rear + 0.01), (hw - 0.01, roof - 0.005, ws["top_z"] - 0.13), liner)
+            else:
+                self.headliner(hw, roof, rear + 0.01, ws["top_z"] - 0.13, liner)
         if "rear_wall" not in skip:
             rw = self.wall(floor + 0.1, roof - 0.1, rear + 0.05, rear + 0.2)
             uv = self.uv("rear wall", (0, (floor + roof) / 2, rear + 0.5), (0, 0, -1))

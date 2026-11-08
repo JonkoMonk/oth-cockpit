@@ -591,6 +591,41 @@ def visors_mirror(b):
 
 # ---------------------------------------------------------------- signature features
 
+def inside_x(k, y, z, s, most, margin=0.035):
+    """|x| for the middle of a 4 cm tube at height y, depth z that stays inside the body (glass included) on
+    side s, at most `most`. Rays go out from the middle of the car; misses keep `most`."""
+    xs = []
+    for dz in (-0.03, 0.0, 0.03):
+        p, _, _ = k.sampler.hit((0.0, y, z + dz), (s, 0, 0))
+        if p is not None and abs(p.x) > 0.25:
+            xs.append(abs(p.x))
+    return min([most] + [x - margin for x in xs])
+
+
+def bent_tube(name, pts, size, mat):
+    """One square tube along a polyline (game coordinates): one mesh, so its bends don't make faces that
+    sit on top of each other (separate straight beams did, and flickered)."""
+    from mathutils import Vector
+    pts = [Vector(p) for p in pts]
+    verts, faces = [], []
+    h = size / 2
+    for i, p in enumerate(pts):
+        d = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        up = Vector((0, 1, 0)) if abs(d.y) < 0.9 else Vector((1, 0, 0))
+        a = up.cross(d).normalized()
+        c = d.cross(a).normalized()
+        for sa, sc in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            verts.append(tuple(p + a * (sa * h) + c * (sc * h)))
+    for i in range(len(pts) - 1):
+        r0, r1 = 4 * i, 4 * (i + 1)
+        for j in range(4):
+            faces.append((r0 + j, r0 + (j + 1) % 4, r1 + (j + 1) % 4, r1 + j))
+    faces.append((0, 1, 2, 3))
+    n = 4 * (len(pts) - 1)
+    faces.append((n + 3, n + 2, n + 1, n))
+    return P.mesh_object(name, verts, faces, mat)
+
+
 def features(b):
     k, L, cfg, m = b.k, b.L, b.cfg, b.m
     f = b.feat
@@ -646,14 +681,32 @@ def features(b):
         P.place(P.cylinder("extinguisher", 0.045, 0.30, M("red", (0.85, 0.20, 0.16)), n=12, z0=0.0),
                 (ex, L.floor + 0.05, L.eye[2] + 0.35), Rx(-90))
     if "roll_cage" in f:   # tubes along the pillars and across the roof behind the front seats
+        # Bent along the body: at one width (the cabin's at belt height) the tubes stuck out through bodies
+        # that lean in towards the roof (Polyana: the post went through the rear side glass, the roof tubes
+        # through the roof edge; red mixed with the paint and showed outside the car).
         cz_ = L.eye[2] - 0.45
         hw = L.wall - 0.06
+        cmat = b.c["cage"] if "cage" in b.c else b.c["dark"]
+        ry = m["roof"] - 0.07
         for s in (-1, 1):
-            k.beam(f"cage_up{s}", (s * hw, L.floor + 0.05, cz_), (s * hw, m["roof"] - 0.07, cz_ + 0.02), 0.04, 0.04, b.c["cage"] if "cage" in b.c else b.c["dark"])
-            k.beam(f"cage_side{s}", (s * hw, m["roof"] - 0.07, cz_ + 0.02), (s * (ws["half_w"] - 0.02), ws["top_y"] - 0.04,
-                   ws["top_z"] - 0.10), 0.04, 0.04, b.c["cage"] if "cage" in b.c else b.c["dark"])
-        k.beam("cage_cross", (-hw, m["roof"] - 0.07, cz_ + 0.02), (hw, m["roof"] - 0.07, cz_ + 0.02), 0.04, 0.04,
-               b.c["cage"] if "cage" in b.c else b.c["dark"])
+            pts = []
+            for i in range(7):
+                y = L.floor + 0.05 + (ry - L.floor - 0.05) * i / 6
+                z = cz_ + 0.02 * i / 6
+                pts.append((s * inside_x(k, y, z, s, hw), y, z))
+            top = pts[-1]
+            end = (ws["half_w"] - 0.02, ws["top_y"] - 0.04, ws["top_z"] - 0.10)
+            side = []
+            for i in range(1, 5):
+                t = i / 4
+                y = top[1] + (end[1] - top[1]) * t
+                z = top[2] + (end[2] - top[2]) * t
+                x = abs(top[0]) + (end[0] - abs(top[0])) * t
+                side.append((s * min(x, inside_x(k, y, z, s, hw)), y, z))
+            # Post and roof-side tube are one bent tube (up the pillar, along the roof edge to the windscreen).
+            bent_tube(f"cage_up{s}", pts + side, 0.04, cmat)
+        cw = min(inside_x(k, ry, cz_ + 0.02, s, hw) for s in (-1, 1))
+        k.beam("cage_cross", (-cw, ry, cz_ + 0.02), (cw, ry, cz_ + 0.02), 0.04, 0.04, cmat)
     if "engine_cover" in f:   # cab-over trucks and vans: engine box between the seats
         P.prism("engine_cover", [(-0.20, L.floor), (-0.18, L.floor + 0.38), (0.18, L.floor + 0.38), (0.20, L.floor)],
                 "z", L.eye[2] - 0.15, fz + 0.05, b.c["dash"])
@@ -754,7 +807,8 @@ def build(k, cfg):
     k.wall = lambda *a_, **kw_: half
     # The cross-section the side lining follows (kit.wall_x), measured along the front door.
     k.half = half
-    door_win = max(m["windows"], key=lambda w_: w_[1]) if m["windows"] else (ez_ - 0.5, ez_ + 0.3)
+    k.fit_sides = bool(cfg.get("fit_sides", False))
+    door_win =max(m["windows"], key=lambda w_: w_[1]) if m["windows"] else (ez_ - 0.5, ez_ + 0.3)
     k.section_z = (door_win[0] + 0.05, min(door_win[1], ws["base_z"] - 0.05) - 0.05)
     print(f"v2 cabin: half width {half:.3f}, belt {m['belt']:.3f}, window top {m['win_top']:.3f}, windows {len(m['windows'])}")
     L = styles.Layout(k, m, cfg)

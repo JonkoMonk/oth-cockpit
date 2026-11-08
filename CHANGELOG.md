@@ -9,6 +9,22 @@ PATCH for fixes only. 1.0.0 when every car is finished and it leaves alpha.
 - 0.5.0: customise the interior
 - 1.0.0: out of alpha
 
+## 0.4.2-alpha (2026-11-08)
+
+- Mirrors you can use: a real flat mirror shows only a sliver of the world, too little to see anything in this
+  game. The mirrors now show about twice as much, like a convex wide-angle mirror (`[Mirrors] WideAngle`,
+  default 2.2; 1 = a real flat mirror), and the rear-view mirror is half as big again with a sharper picture
+  (`[Mirrors] RearViewSize`, default 1.5; 1 = the model's size). Both change live in the settings file.
+- Interiors (from the interior review of the 2026-11-07 footage):
+  - The pillar between the side windows (right beside your head in the DingDing, Trail Burner, Burro and
+    others) was a big flat slab. It's now a moulded trim with rounded-off edges, and the driver's seat belt
+    hangs down it.
+  - Trail Burner: cream dial faces (the black ones were hard to read in the black dash).
+  - Protector: the steering wheel sits 5 cm higher, so you see it from the seat.
+  - Polyana: no more patches of the car's outside paint inside the cabin. The lining at the rear corners and the
+    roof lining now follow the body's curve, and the red roll cage stays inside the body (it ran through the pillars
+    and the roof edge). Lynx: same roll cage fix.
+
 ## 0.4.1-alpha (2026-11-07)
 
 - Rear-view mirror: it looked at the ground behind the car; it now looks back along the road.

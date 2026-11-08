@@ -64,6 +64,7 @@ internal static class Mirrors
     public static void Setup(GlbBuilder.Result built, Transform car, Vector3 eye)
     {
         Teardown();
+        SizeRearMirror(built);
         if (!Settings.MirrorsOn.Value) return;
         _car = car;
         _level = Current();
@@ -84,6 +85,43 @@ internal static class Mirrors
         }
         _frame = 0; _sumDt = 0f; _frames = 0; _logAt = Time.unscaledTime + 30f;
         Plugin.Info($"mirrors ({Settings.MirrorQualityLevel.Value}): {(found.Count > 0 ? string.Join(", ", found) : "none in this model")}");
+    }
+
+    // [Mirrors] RearViewSize: the rear-view mirror (housing "mirror" + its glass) scaled about the glass centre.
+    // From the model's own placement each time, since Setup runs again when the settings change. Plain mirrors
+    // (mirrors off) keep the model's size.
+    static void SizeRearMirror(GlbBuilder.Result built)
+    {
+        var parts = new List<(Transform t, GlbModel.Node n)>();
+        Transform glass = null;
+        foreach (var (t, n) in built.All)
+        {
+            bool isGlass = n.Extras.TryGetValue("mirror", out var w) && w == "rear";
+            if (!isGlass && n.Name != "mirror") continue;
+            parts.Add((t, n));
+            if (isGlass) glass = t;
+        }
+        foreach (var (t, n) in parts)
+        {
+            t.localPosition = new Vector3(n.T[0], n.T[1], n.T[2]);
+            t.localRotation = new Quaternion(n.R[0], n.R[1], n.R[2], n.R[3]);
+            t.localScale = new Vector3(n.S[0], n.S[1], n.S[2]);
+        }
+        float s = Settings.MirrorsOn.Value ? Mathf.Clamp(Settings.RearViewSize.Value, 1f, 2f) : 1f;
+        if (glass == null || Mathf.Abs(s - 1f) < 0.01f) return;
+        var mf = glass.GetComponent<MeshFilter>();
+        if (mf == null) mf = glass.GetComponentInChildren<MeshFilter>();
+        if (mf == null || mf.sharedMesh == null) return;
+        var c = Vector3.zero;
+        var verts = mf.sharedMesh.vertices;
+        foreach (var v in verts) c += v;
+        c = mf.transform.TransformPoint(c / Math.Max(1, verts.Length));
+        foreach (var (t, _) in parts)
+        {
+            t.position = c + (t.position - c) * s;
+            t.localScale *= s;
+        }
+        Plugin.Info($"rear-view mirror {s:0.00}x its model size ({parts.Count} parts)");
     }
 
     static Mirror Make(Transform t, GlbModel.Node node, string which, Camera main, Transform car, Vector3 eye)
@@ -153,7 +191,8 @@ internal static class Mirrors
         // Texture: rear 512 wide, side 320 high (times the quality's resolution), the glass's shape.
         float res = _level.Resolution;
         int tw, th;
-        if (which == "rear") { tw = (int)(512 * res); th = (int)(tw * height / width); }
+        // A bigger rear-view mirror gets a sharper picture (it shows more of the world too).
+        if (which == "rear") { tw = (int)(512 * res * Mathf.Clamp(Settings.RearViewSize.Value, 1f, 2f)); th = (int)(tw * height / width); }
         else { th = (int)(320 * res); tw = (int)(th * width / height); }
         tw = Mathf.Clamp(tw, 32, 1024); th = Mathf.Clamp(th, 32, 1024);
         var rt = new RenderTexture(tw, th, 16) { name = "OthCockpit mirror " + which };
@@ -250,9 +289,11 @@ internal static class Mirrors
             var from = m.Road ? _car.TransformPoint(m.RoadFrom) : centre + normal * 0.005f;
             m.Cam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(look, up.sqrMagnitude > 1e-6f ? up : Vector3.up));
             // The angle the glass covers from the eye; side mirrors are a little convex (they show more), and
-            // the road view a bit wider (no cabin around it to judge distance by).
-            float wide = m.Road ? 1.3f : m.Which == "rear" ? 1.0f : 1.35f;
-            m.Cam.fieldOfView = Mathf.Clamp(2f * Mathf.Atan(m.Height * 0.5f / dist) * Mathf.Rad2Deg * wide, 2f, 90f);
+            // the road view a bit wider (no cabin around it to judge distance by). [Mirrors] WideAngle on top:
+            // a flat mirror shows too little to be useful in this game, so by default they show like a convex
+            // wide-angle mirror. Capped at 60° high (the rear-view picture is ~4x as wide as high).
+            float wide = (m.Road ? 1.3f : m.Which == "rear" ? 1.0f : 1.35f) * Mathf.Clamp(Settings.MirrorWide.Value, 1f, 3f);
+            m.Cam.fieldOfView = Mathf.Clamp(2f * Mathf.Atan(m.Height * 0.5f / dist) * Mathf.Rad2Deg * wide, 2f, 60f);
             m.Cam.aspect = m.Width / m.Height;
             m.Cam.enabled = (_frame + i) % every == 0;
             if (m.Cam.enabled && Time.unscaledTime >= _gpuiCheckAt) Instancer.Ensure(m.Cam);

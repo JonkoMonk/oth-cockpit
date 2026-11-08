@@ -42,6 +42,8 @@ if "--nofit" not in args:
 fit_v2.report(L.eye, {k.body.name})
 if cfg.get("pillar_trim", True):
     k.pillar_trims(L.eye, shift=cfg.get("trim_shift", 0.0))
+if cfg.get("seat_belt", True):
+    k.seat_belt(L.eye)
 k.inner_skins(L.eye)
 k.frame_covers(L.eye)
 k.rear_view(L.eye)
