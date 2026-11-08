@@ -12,6 +12,9 @@ import parts as P
 GAUGES = ("tacho", "speedo", "fuel", "temp")
 LAMPS = ("handbrake", "engine", "headlights", "lowrange")
 WEIGHT = {"tacho": 3, "speedo": 3, "fuel": 1.5, "temp": 1.5, "gear": 2}   # lamps 1
+# Round faces that aren't instruments (nothing to read, never moved) but must not overlap one: name -> its parts.
+# Polyana 0.4.2: the clock's ring overlapped the temp gauge's by 2 cm and nothing reported it.
+DECOR = {"clock": ("clock", "clock_ring"), "volt_face": ("volt_face", "volt_ring"), "air_gauge": ("air_gauge",)}
 WHEEL_TOP = ("steering_wheel", "column", "stalk")                         # moved together (children follow)
 WHEEL_PART = ("steering_wheel", "wheel_", "horn_", "column", "stalk")
 
@@ -288,8 +291,11 @@ def _plane_shape(face, own):
 
 
 def overlaps():
-    """Pairs of instruments on (nearly) the same face whose outlines overlap."""
+    """Pairs of instruments (and DECOR faces) on (nearly) the same face whose outlines overlap."""
     ins = instruments()
+    for n, own in DECOR.items():
+        if n in bpy.data.objects:
+            ins[n] = (bpy.data.objects[n], set(own))
     shapes = {n: _plane_shape(f, own) for n, (f, own) in ins.items()}
     nz = {n: _axis(ins[n][0], (0, 0, 1)) for n in ins}
     found = []

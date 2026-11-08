@@ -24,7 +24,8 @@ CARS = {
                      ws=dict(base_y=1.40, base_z=0.43, top_y=2.0, top_z=0.31, half_w=0.73),   # measured by hand (CLAUDE.md)
                      colors=dict(pad=(0.24, 0.23, 0.25))),
     # Toyota FJ45 pickup: the DingDing's work-boots brother. Bench seat, rubber tray on the dash, no radio.
-    "Burro": dict(game="Burro", side=1, character="The DingDing's workhorse brother: bench seat, dash tray, no radio",
+    "Burro": dict(game="Burro", fit_sides=False,   # fit_sides off: no gain (body paint seen +2%), darker rear corner (check 2026-11-08)
+                  side=1, character="The DingDing's workhorse brother: bench seat, dash tray, no radio",
                   dash="painted_pad", cluster="binnacle", wheel="t", seats="bench", seat_pattern="stripes", radio=False,
                   handbrake="pull", features=[], horn="accent",
                   trim_shift=0.03,   # pillar trims 3 cm towards the doors: the dash corner showed under them
@@ -32,7 +33,8 @@ CARS = {
                   colors=dict(seat=(0.42, 0.40, 0.36), seat2=(0.52, 0.50, 0.45), accent=(0.86, 0.52, 0.22),
                               rim=(0.86, 0.82, 0.70))),
     # Land Rover Defender 90: binnacle pod over a flat four-spoke wheel, vent flaps, levers forest, RHD.
-    "Protector": dict(game="Protector", side=1, character="Defender: pod over a flat wheel, vent flaps, yellow diff-lock knob",
+    "Protector": dict(game="Protector", fit_sides=False,   # fit_sides off: a light wedge hung down at the rear roof corner (check 2026-11-08)
+                  side=1, character="Defender: pod over a flat wheel, vent flaps, yellow diff-lock knob",
                       dash="plastic", cluster="pod", wheel="four", wheel_tilt=40, seats="headrest", seat_pattern="ribs",
                       handbrake="lever", features=["vent_flaps"], extra_levers=[(0.15, "knob3")], eye_y=1.64, eye_z=-0.30, wheel_drop=0.42, wheel_r=0.20,   # drop 0.47: the flat wheel was below the view
                       colors=dict(dash=(0.20, 0.20, 0.22), seat=(0.30, 0.31, 0.33), seat2=(0.40, 0.41, 0.43),
@@ -64,7 +66,8 @@ CARS = {
                                     seat=(0.62, 0.46, 0.30), seat2=(0.70, 0.54, 0.36), door=(0.52, 0.38, 0.25),
                                     rim=(0.14, 0.13, 0.13), spoke=(0.14, 0.13, 0.13), carpet=(0.36, 0.27, 0.18)), carpet=True),
     # 80s American pickup: tan plastic, striped bench, column automatic, CB radio and an air freshener.
-    "Cumbre": dict(game="Cumbre", side=-1, character="80s pickup: tan plastic, striped bench, CB radio, column shift",
+    "Cumbre": dict(game="Cumbre", fit_sides=False,   # fit_sides off: cream wedges where the headliner dips below the rear roof edge (check 2026-11-08)
+                  side=-1, character="80s pickup: tan plastic, striped bench, CB radio, column shift",
                    dash="plastic", cluster="wide", wheel="four", hub="big", seats="bench", seat_pattern="stripes", handbrake="none",
                    automatic=True, shifter="column", features=[], dials="eighties",
                    colors=dict(dash=(0.62, 0.50, 0.38), pad=(0.52, 0.41, 0.30), panel=(0.16, 0.15, 0.15),
@@ -90,7 +93,8 @@ CARS = {
                       colors=dict(rim=(0.92, 0.88, 0.76), spoke=(0.80, 0.80, 0.80), seat=(0.55, 0.30, 0.18),
                                   seat2=(0.68, 0.42, 0.26), door=(0.50, 0.30, 0.18), panel=(0.20, 0.18, 0.16))),
     # Dodge Power Wagon: flat steel truck dash, cream dials, big flat wheel, bench, winch PTO lever.
-    "BlastWagon": dict(game="BlastWagon", side=-1, character="Power Wagon: flat steel, cream dials, winch lever on the floor",
+    "BlastWagon": dict(game="BlastWagon", fit_sides=False,   # fit_sides off: its cab back-wall corners got worse (check 2026-11-08)
+                  side=-1, character="Power Wagon: flat steel, cream dials, winch lever on the floor",
                        dash="flat", cluster="row", wheel="four", wheel_r=0.23, wheel_tilt=35, seats="bench", handbrake="lever",
                        dials="cream", radio=False, features=["winch_lever"],
                        colors=dict(seat=(0.30, 0.26, 0.22), seat2=(0.40, 0.35, 0.30), panel=(0.20, 0.20, 0.20),
@@ -109,14 +113,16 @@ CARS = {
                              seat2=(0.40, 0.42, 0.30), liner=(0.40, 0.42, 0.30), door=(0.20, 0.20, 0.21),
                              cage=(0.20, 0.20, 0.21))),
     # Mercedes G-Class (W460): upright dash, three dials in a row, the famous grab handle, diff-lock buttons, checks.
-    "Wombat": dict(game="Wombat", side=-1, character="Early G-Class: upright dash, passenger grab handle, diff-lock buttons, checked seats",
+    "Wombat": dict(game="Wombat", fit_sides=False,   # fit_sides off: roof edge flickered against the inner skin, small gain (check 2026-11-08)
+                  side=-1, character="Early G-Class: upright dash, passenger grab handle, diff-lock buttons, checked seats",
                    dash="plastic", cluster="binnacle", wheel="four", seats="headrest", seat_pattern="tartan", handbrake="lever",
                    features=[],
                    colors=dict(dash=(0.18, 0.18, 0.20), pad=(0.18, 0.18, 0.20), seat=(0.24, 0.24, 0.26),
                                seat2=(0.56, 0.52, 0.44), door=(0.22, 0.22, 0.24), rim=(0.14, 0.14, 0.15),
                                spoke=(0.14, 0.14, 0.15))),
     # Toyota Land Cruiser J70: chunky 80s grey plastic, cluster hood, grab bar, two levers. RHD.
-    "Brick": dict(game="Brick", side=1, character="80s Land Cruiser: chunky grey plastic, grab bar, grey cloth",
+    "Brick": dict(game="Brick", fit_sides=False,   # fit_sides off: roof edge flickered against the inner skin, small gain (check 2026-11-08)
+                  side=1, character="80s Land Cruiser: chunky grey plastic, grab bar, grey cloth",
                   dash="plastic", cluster="wide", wheel="four", seats="headrest", seat_pattern="stripes", handbrake="lever",
                   dials="eighties", features=["grab_bar", "grab_dark", "console"],
                   colors=dict(dash=(0.46, 0.46, 0.48), pad=(0.36, 0.36, 0.38), panel=(0.16, 0.16, 0.18),
@@ -143,14 +149,16 @@ CARS = {
                     colors=dict(dash=(0.20, 0.20, 0.22), pad=(0.20, 0.20, 0.22), seat=(0.52, 0.40, 0.30),
                                 seat2=(0.62, 0.48, 0.34), door=(0.24, 0.24, 0.26), metal=(0.30, 0.30, 0.32))),
     # Small French 4x4 of the 70s/80s: tan plastic, a single-spoke wheel, orange corduroy, umbrella handbrake.
-    "Baguette": dict(game="Baguette", side=-1, character="French 70s: single-spoke wheel, tan plastic, orange corduroy",
+    "Baguette": dict(game="Baguette", fit_sides=False,   # fit_sides off: no gain (check 2026-11-08)
+                  side=-1, character="French 70s: single-spoke wheel, tan plastic, orange corduroy",
                      dash="plastic", cluster="wide", wheel="single", seats="bucket", seat_pattern="ribs", handbrake="pull",
                      transfer=False,
                      colors=dict(dash=(0.64, 0.56, 0.44), pad=(0.54, 0.46, 0.36), panel=(0.18, 0.17, 0.16),
                                  seat=(0.80, 0.44, 0.18), seat2=(0.88, 0.54, 0.24), door=(0.60, 0.52, 0.40),
                                  rim=(0.20, 0.19, 0.18), spoke=(0.20, 0.19, 0.18))),
     # Unimog 406 double cab: flat dash, dials in the middle, a near-flat big wheel and a forest of levers.
-    "Mammoth": dict(game="Mammoth", side=-1, character="Unimog: big flat wheel, dials in the middle, a forest of levers",
+    "Mammoth": dict(game="Mammoth", fit_sides=False,   # fit_sides off: headliner wedges in the rear corners (check 2026-11-08)
+                  side=-1, character="Unimog: big flat wheel, dials in the middle, a forest of levers",
                     dash="flat", cluster="center", wheel="bus", wheel_r=0.23, wheel_tilt=55, seats="headrest", handbrake="lever",
                     dials="olive", radio=False, features=["fire_extinguisher"],
                     extra_levers=[(0.15, "knob3"), (0.20, "knob2"), (0.25, "knob")],
@@ -163,7 +171,8 @@ CARS = {
                     colors=dict(dash=(0.66, 0.58, 0.40), seat=(0.30, 0.31, 0.24), seat2=(0.38, 0.39, 0.30),
                                 rim=(0.16, 0.16, 0.18), spoke=(0.16, 0.16, 0.18))),
     # Mercedes T2 "Düdo" camper: bus wheel, tall dash, engine cover, a checked curtain behind the seats.
-    "RustOx": dict(game="RustOx", side=-1, character="Mercedes camper van: bus wheel, engine box, checked curtain behind you",
+    "RustOx": dict(game="RustOx", fit_sides=False,   # kept as 0.4.2: the camper needs its own rebuild (his video 2026-11-08 18-10)
+                  side=-1, character="Mercedes camper van: bus wheel, engine box, checked curtain behind you",
                    dash="plastic", cluster="binnacle", wheel="bus", wheel_r=0.22, wheel_tilt=50, seats="headrest",
                    handbrake="lever", features=["engine_cover", "curtain"], tunnel=False, transfer=False,
                    colors=dict(dash=(0.86, 0.84, 0.78), pad=(0.30, 0.30, 0.32), seat=(0.24, 0.40, 0.48),

@@ -223,9 +223,13 @@ def check_flicker(exclude=(), eye=None):
             # would blow up the outline of a square panel).
             # (rounded: for a face along an axis two axes tie, and float noise picked different ones for faces
             # in the same plane, so faces far apart were compared in different 2D frames and "overlapped")
-            a1 = min((Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))), key=lambda a: round(abs(n.dot(a)), 3))
-            u = (a1 - n * n.dot(a1)).normalized()
-            v = n.cross(u)
+            # (the frame comes from the plane's rounded normal, shared by every face in it: each face's own normal
+            # tilts a little on bent panels, and 1 mm of tilt shifted a face's outline 2-3 mm, so two panels that
+            # only meet along an edge "overlapped": fit_sides door/quarter joints, 2026-11-08)
+            nk = Vector(key[:3]).normalized()
+            a1 = min((Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))), key=lambda a: round(abs(nk.dot(a)), 3))
+            u = (a1 - nk * nk.dot(a1)).normalized()
+            v = nk.cross(u)
             uv2 = [(p.dot(u), p.dot(v)) for p in pts]
             lo = (min(q[0] for q in uv2), min(q[1] for q in uv2))
             hi = (max(q[0] for q in uv2), max(q[1] for q in uv2))

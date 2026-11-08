@@ -9,7 +9,7 @@ namespace OthCockpit;
 // and logging, call Start, then put CockpitBehaviour on a GameObject.
 public static class Plugin
 {
-    public const string Guid = "jonkomonk.oth.cockpit", Name = "OTH Cockpit", Version = "0.4.2", Author = "JonkoMonk";
+    public const string Guid = "jonkomonk.oth.cockpit", Name = "OTH Cockpit", Version = "0.4.3", Author = "JonkoMonk";
 
     static Action<string> _info = Console.WriteLine, _warn = Console.WriteLine, _error = Console.WriteLine;
     static readonly HashSet<string> _reported = new();

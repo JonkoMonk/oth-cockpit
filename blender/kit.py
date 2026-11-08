@@ -419,9 +419,8 @@ class Kit:
     section_z = None
     half = 0.85
     # Per car (cfg fit_sides): side panels bent to the body along their length + a headliner that follows the
-    # roof (fitted_panel, headliner). On for the Polyana (review 2026-11-08). Tried on all 23: less of the
-    # game's paint shows on 21 cars, but the Blast Wagon's cab corners got worse and some cars got new
-    # flicker, so each car gets it only after its own check.
+    # roof (fitted_panel, headliner). v2 cars: on by default since 0.4.3 (styles_v2), off for the 5 cars where
+    # the renders looked worse (cars_v2). The "new flicker" it seemed to cause was a false alarm of the check.
     fit_sides = False
 
     def wall_x(self, y, s=-1):

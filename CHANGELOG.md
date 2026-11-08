@@ -9,6 +9,15 @@ PATCH for fixes only. 1.0.0 when every car is finished and it leaves alpha.
 - 0.5.0: customise the interior
 - 1.0.0: out of alpha
 
+## 0.4.3-alpha (2026-11-08)
+
+- Polyana: the small clock in the centre stack overlapped the temperature gauge (its ring ran across the gauge).
+  The three small dials there now sit side by side, and the clock's hands look like a clock (they crossed into
+  an X). Grand Woodman: same clock hands.
+- Less of the car's outside paint showing inside the cabin on 13 more cars: the side lining and the roof lining
+  now follow the body's curve, like the Polyana's in 0.4.2 (DingDing, Tinny, Trailrat, Bull, Trail Burner,
+  Woodman, Grand Woodman, Timberbox, Boar, Lynx, Roamer, Grizzly, Marshal).
+
 ## 0.4.2-alpha (2026-11-08)
 
 - Mirrors you can use: a real flat mirror shows only a sliver of the world, too little to see anything in this

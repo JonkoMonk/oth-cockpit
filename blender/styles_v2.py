@@ -807,7 +807,9 @@ def build(k, cfg):
     k.wall = lambda *a_, **kw_: half
     # The cross-section the side lining follows (kit.wall_x), measured along the front door.
     k.half = half
-    k.fit_sides = bool(cfg.get("fit_sides", False))
+    # Side lining bent to the body + a headliner that follows the roof: on by default since 0.4.3 (less of the game's
+    # paint shows inside on most cars); cars_v2 turns it off where the renders looked worse (2026-11-08 check).
+    k.fit_sides = bool(cfg.get("fit_sides", True))
     door_win =max(m["windows"], key=lambda w_: w_[1]) if m["windows"] else (ez_ - 0.5, ez_ + 0.3)
     k.section_z = (door_win[0] + 0.05, min(door_win[1], ws["base_z"] - 0.05) - 0.05)
     print(f"v2 cabin: half width {half:.3f}, belt {m['belt']:.3f}, window top {m['win_top']:.3f}, windows {len(m['windows'])}")

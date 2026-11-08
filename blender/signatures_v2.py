@@ -11,6 +11,7 @@ import math
 import bpy
 
 import parts as P
+from mathutils import Vector
 from parts import Rx, Ry, Rz
 from styles_v2 import M, cluster, gauge, gear_display, hub_y, lamps, opening_y
 
@@ -284,8 +285,11 @@ def cassette_deck(c, name, x, y, z, w=0.18):
 def clock(c, name, x, y, z, r=0.035):
     P.place(P.disc(name, r, M("clock_face", (0.94, 0.90, 0.80)), n=24), (x, y, z))
     P.place(P.torus(name + "_ring", r + 0.004, 0.005, c.b.c["metal"], n=24, m=5), (x, y, z))
-    P.place(P.cbox(name + "_hour", (0.005, r * 0.55, 0.002), c.b.c["dark"]), (x, y + r * 0.2, z - 0.003), Rz(-60))
-    P.place(P.cbox(name + "_min", (0.004, r * 0.8, 0.002), c.b.c["dark"]), (x, y + r * 0.3, z - 0.004), Rz(20))
+    # Hands from the centre at ten past ten (they used to cross in the middle and read as an 'X').
+    for hand, length, w, dz, deg in (("_hour", r * 0.55, 0.005, 0.003, 60), ("_min", r * 0.8, 0.004, 0.004, -60)):
+        off = Rz(deg) @ Vector((0, length / 2, 0))
+        P.place(P.cbox(name + hand, (w, length, 0.002), c.b.c["dark"]), (x + off.x, y + off.y, z - dz), Rz(deg))
+    P.place(P.cylinder(name + "_pin", 0.004, 0.006, c.b.c["dark"], n=8, z0=-0.006), (x, y, z))
 
 
 def handset(c, x, y, z):
@@ -863,12 +867,15 @@ def polyana(b):
         lamps(b, {"handbrake": c.dx - 0.215, "engine": c.dx - 0.18, "headlights": c.dx + 0.18, "lowrange": c.dx + 0.215},
               yt + 0.087, z - 0.002, r=0.009)
     L = c.L
-    P.prism("centre_stack", [(-0.11, L.floor + 0.22), (-0.11, c.fb + 0.10), (0.11, c.fb + 0.10), (0.11, L.floor + 0.22)], "z",
+    # Three small faces 8.5 cm apart (were 6 cm: the temp and clock rings overlapped, his 0.4.2 screenshot).
+    w = 0.13
+    P.prism("centre_stack", [(-w, L.floor + 0.22), (-w, c.fb + 0.10), (w, c.fb + 0.10), (w, L.floor + 0.22)], "z",
             c.fz - 0.12, c.fz + 0.06, d)
     zs = c.fz - 0.122
-    gauge(b, "temp", -0.06, c.fb + 0.04, 0.03, zs)
+    gauge(b, "temp", -0.085, c.fb + 0.04, 0.028, zs)
     clock(c, "clock", 0.0, c.fb + 0.04, zs, r=0.03)
-    P.place(P.disc("volt_face", 0.03, M("volt", (0.18, 0.18, 0.20)), n=20), (0.06, c.fb + 0.04, zs))
+    P.place(P.disc("volt_face", 0.028, M("volt", (0.18, 0.18, 0.20)), n=20), (0.085, c.fb + 0.04, zs))
+    P.place(P.torus("volt_ring", 0.034, 0.006, b.mat("metal"), n=28, m=6), (0.085, c.fb + 0.04, zs))
     gear_display(b, 0.0, c.fb - 0.03, zs, size=0.03)
     P.box("soviet_radio", (-0.10, c.fb - 0.14, zs - 0.012), (0.10, c.fb - 0.07, zs + 0.002), M("radio_silver", (0.66, 0.66, 0.64)))
     knob_row(c, "radio_knob", (-0.075, 0.075), c.fb - 0.105, zs - 0.012, b.c["dark"], r=0.014)
