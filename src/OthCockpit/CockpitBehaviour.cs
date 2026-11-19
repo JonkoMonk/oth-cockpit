@@ -53,6 +53,10 @@ public class CockpitBehaviour : MonoBehaviour
     readonly List<MeshRenderer> _paintRenderers = new();
     Renderer _bodyRenderer;
     MaterialPropertyBlock _block;
+    // A car whose model has a copy of the game's body with a piece cut out (node extra hide_game_body; DingDing:
+    // the dark box on the dash): the game's own body is switched off for our car while the cockpit view is on.
+    readonly List<Renderer> _gameBody = new();
+    bool _gameBodyOff;
     float _nextPaintSync;
     Material _gearMat;
     Color _gearColor;
@@ -81,6 +85,8 @@ public class CockpitBehaviour : MonoBehaviour
                     _dumpVk = Keys.Parse(Settings.DumpKey.Value);
                 }
             }
+            try { UpdateNotice.Update(now); }
+            catch (Exception e) { Plugin.ErrorOnce("update notice", e); }
             // Read every frame, so a press without a car doesn't switch the cockpit later.
             bool keyPressed = Keys.Pressed(_toggleVk), wheelPressed = WheelLink.TogglePressed();
             if (!Settings.Enabled.Value) { _wanted = false; if (_on) SetOn(false); WheelLink.SetCockpitActive(false); return; }
@@ -104,6 +110,7 @@ public class CockpitBehaviour : MonoBehaviour
             else if (driving && !_wanted && Gate.ZoomInPastClosest()) Want(true, "zoom in");
             else if (driving && _wanted && Gate.ZoomOut()) Want(false, "zoom out");
             if (Keys.Pressed(_dumpVk)) Dump();
+            IntoTurnSwitch();
 
             // Shown only while driving: menus, map, camp and photo mode get the game's own cameras back.
             bool show = _wanted && driving;
@@ -159,6 +166,7 @@ public class CockpitBehaviour : MonoBehaviour
             Look.Reset();
         }
         else Ears.Restore();
+        GameBodyOff(on);
         Plugin.Info($"cockpit {(on ? "ON" : "off")}  [{Car.Describe()}]");
     }
 
@@ -224,6 +232,8 @@ public class CockpitBehaviour : MonoBehaviour
             }
         }
 
+        FindGameBody(car, built);
+
         // Our own Cinemachine camera in the driver's seat, one priority above the game's chase camera.
 #pragma warning disable CS0618
         var zoom = UnityEngine.Object.FindObjectOfType<ExtraCameraControls>();
@@ -271,6 +281,21 @@ public class CockpitBehaviour : MonoBehaviour
         lens.FieldOfView = Settings.FieldOfView.Value;
         lens.NearClipPlane = 0.02f;
         _vcam.m_Lens = lens;
+    }
+
+    // "Look into turns" on/off: NumPad5 in the cockpit, or the wheel mod's F3 menu (Camera page).
+    float _intoTurnOn = 30f;   // what NumPad5 switches back on to
+    void IntoTurnSwitch()
+    {
+        float cur = Settings.LookIntoTurn.Value;
+        if (cur > 0f) _intoTurnOn = cur;
+        float? v = WheelLink.SyncIntoTurn(cur);
+        if (v == null && _on && Keys.Pressed(Keys.NumPad5)) v = cur > 0f ? 0f : _intoTurnOn;
+        if (v == null) return;
+        Settings.LookIntoTurn.Value = Mathf.Clamp(v.Value, 0f, 90f);
+        Settings.Saved();
+        Plugin.Info($"look into turns: {Settings.LookIntoTurn.Value:0} deg");
+        Say(Settings.LookIntoTurn.Value > 0f ? $"Look into turns: {Settings.LookIntoTurn.Value:0}°" : "Look into turns: off", 3f);
     }
 
     void SeatKeys()
@@ -412,8 +437,57 @@ public class CockpitBehaviour : MonoBehaviour
         return true;
     }
 
+    // The game's body renderers (all its detail levels) of our own car, when the model brings a copy of the body.
+    // None found: the copy is switched off instead (two bodies in one place would flicker), the game's body stays.
+    void FindGameBody(Transform car, GlbBuilder.Result built)
+    {
+        _gameBody.Clear();
+        Transform copy = null;
+        foreach (var (t, n) in built.All) if (n.Extras.ContainsKey("hide_game_body")) copy = t;
+        if (copy == null) return;
+        // The car is "Car_DingDing", its body parts "DingDing_body_LOD0" .. "LOD3".
+        string car0 = Car.Name.StartsWith("Car_") ? Car.Name.Substring(4) : Car.Name;
+        string prefix = car0 + "_body_LOD";
+        var names = new List<string>();
+        foreach (var r in car.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            bool ours = false;
+            for (var p = r.transform; p != null && p != car; p = p.parent) if (p.name == "OthCockpit") { ours = true; break; }
+            if (ours) continue;
+            var mf = r.GetComponent<MeshFilter>();
+            string mesh = mf != null && mf.sharedMesh != null ? mf.sharedMesh.name : "";
+            if (!r.name.StartsWith(prefix) && !mesh.StartsWith(prefix)) continue;
+            _gameBody.Add(r);
+            names.Add(r.name);
+        }
+        if (_gameBody.Count == 0)
+        {
+            copy.gameObject.SetActive(false);
+            Plugin.Warn($"body copy: no '{prefix}*' renderer on the car, so the game's body stays and the copy is off");
+        }
+        else Plugin.Info($"body copy: the game's body ({string.Join(", ", names)}) is off while in the cockpit view");
+    }
+
+    void GameBodyOff(bool off)
+    {
+        if (off == _gameBodyOff) return;
+        foreach (var r in _gameBody)
+        {
+            if (r == null) continue;
+            try { r.forceRenderingOff = off; }
+            catch (Exception e)
+            {
+                Plugin.ErrorOnce("body copy: forceRenderingOff", e);
+                r.enabled = !off;
+            }
+        }
+        _gameBodyOff = off;
+    }
+
     void Teardown()
     {
+        GameBodyOff(false);
+        _gameBody.Clear();
         Ears.Restore();
         Mirrors.Teardown();
         _built = null;
@@ -464,6 +538,8 @@ public class CockpitBehaviour : MonoBehaviour
 
     void OnGUI()
     {
+        try { UpdateNotice.OnGUI(Time.unscaledTime); }
+        catch (Exception e) { Plugin.ErrorOnce("update notice", e); }
         bool msg = Time.unscaledTime < _messageUntil;
         if (!msg && !(_on && Settings.ShowData.Value)) return;
         try

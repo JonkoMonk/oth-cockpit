@@ -416,6 +416,10 @@ def pedals_levers(b):
     for name, off, w in peds:
         k.pedal(name, (L.dx + off, py, pz), name, w, arm=arm)
     tunnel_top = L.floor + cfg.get("tunnel_h", 0.20)
+    if "engine_cover" in cfg.get("features", ()):   # levers stand on the engine box (they sank into it: Rust Ox, his test 11-13)
+        tunnel_top = L.floor + 0.41
+    if cfg.get("lever_base"):   # a car whose signature builds its own engine box (Marshal)
+        tunnel_top = L.floor + cfg["lever_base"]
     lz = L.eye[2] + 0.30
     shifter = cfg.get("shifter", "floor")
     if shifter == "floor":
@@ -433,8 +437,16 @@ def pedals_levers(b):
                 shaft_r=0.009)
     hb = cfg.get("handbrake", "lever")
     if hb == "lever":
-        k.lever("handbrake_lever", (L.m(-0.15), tunnel_top, L.eye[2] + 0.05), 0.32, -8, 0.032, b.c["knob"],
-                drive="handbrake", a1=-30, boot=0.04, shaft_r=0.014)
+        if "console" in cfg.get("features", ()):   # on the console between the seats (beside it, pulled, it lay in the
+            # driver's seat: Brick, his test 11-13); console top = floor + 0.42 in front of the lid, see features()
+            k.lever("handbrake_lever", (L.m(-0.06), L.floor + 0.42, L.eye[2] + 0.05), 0.22, -8, 0.03, b.c["knob"],
+                    drive="handbrake", a1=-30, boot=0.035, shaft_r=0.012)
+        else:
+            # Its knob (r 3.2 cm) 1.8 cm clear of the driver's cushion edge (|dx| - 0.24): at 15 cm it touched the
+            # cushion, and pulled it lay in it (Lynx, driver 4 cm nearer the middle: through it). His OK 11-13.
+            hx = min(0.15, abs(L.dx) - 0.24 - 0.05) if cfg.get("seats", "bucket") in ("bucket", "headrest") else 0.15
+            k.lever("handbrake_lever", (L.m(-hx), tunnel_top, L.eye[2] + 0.05), cfg.get("hb_len", 0.32), -8, 0.032, b.c["knob"],
+                    drive="handbrake", a1=-30, boot=0.04, shaft_r=0.014)
     elif hb == "pull":
         h = P.empty("handbrake_handle", (L.dx + L.m(0.30), L.face_bottom + 0.04, L.face_z - 0.004), drive="handbrake",
                     move="slide", axis="z", a0=0, a1=-0.11, zero=0, full=1)
@@ -527,6 +539,8 @@ def doors(b):
         return
     wins = m["windows"]
     door = max(wins, key=lambda w: w[1]) if wins else (L.eye[2] - 0.6, L.eye[2] + 0.5, m["belt"], m["win_top"])
+    if cfg.get("door"):   # (z0, z1) of the door window where the frontmost window isn't the door (cab-over vans)
+        door = tuple(cfg["door"])
     z0, z1 = door[0] + 0.05, min(door[1], L.face_z) - 0.02
     belt = m["belt"]
     for s in (-1, 1):
@@ -570,13 +584,30 @@ def floor(b):
 
 def visors_mirror(b):
     L, ws = b.L, b.L.ws
+    ceil = getattr(b, "ceiling", None)   # y of the lining's underside at depth z, where a car sets it (Rust Ox camper)
     for i, x in enumerate((L.dx, -L.dx)):
-        P.place(P.cbox(f"sun_visor{i}", (0.38, 0.018, 0.16), b.c["door"]), (x, ws["top_y"] - 0.03, ws["top_z"] - 0.12), Rx(-15))
-    P.cbox("mirror_stem", (0.02, 0.06, 0.02), b.c["dark"], centre=(0, ws["top_y"] - 0.03, ws["top_z"] - 0.06))
+        if ceil:   # flat under the sloping lining above the screen
+            zc = ws["top_z"] - 0.12
+            slope = math.degrees(math.atan2(ceil(zc - 0.08) - ceil(zc + 0.08), 0.16))
+            P.place(P.cbox(f"sun_visor{i}", (0.38, 0.018, 0.16), b.c["door"]), (x, ceil(zc) - 0.02, zc), Rx(slope))
+        else:
+            P.place(P.cbox(f"sun_visor{i}", (0.38, 0.018, 0.16), b.c["door"]), (x, ws["top_y"] - 0.03, ws["top_z"] - 0.12), Rx(-15))
+    if ceil:   # from the lining down to the mirror
+        # The stem stops at the lining's lowest point over its depth (it poked through the sloping lining: his test
+        # 11-13), a foot plate flat against the slope covers the joint.
+        # 4 cm behind the lining's near-vertical lip by the glass (build 2's stem ran up inside that lip and
+        # showed through its edge: his retest 11-13).
+        zm = min(ws["top_z"] - 0.06, getattr(b, "cove_lip_z", 9.0) - 0.04)
+        y1 = min(ceil(zm - 0.01), ceil(zm + 0.01)) + 0.002
+        P.box("mirror_stem", (-0.01, ws["top_y"] - 0.06, zm - 0.01), (0.01, y1, zm + 0.01), b.c["dark"])
+        slope = math.degrees(math.atan2(ceil(zm - 0.02) - ceil(zm + 0.02), 0.04))
+        P.place(P.cbox("mirror_foot", (0.05, 0.008, 0.05), b.c["dark"]), (0, ceil(zm) - 0.001, zm), Rx(slope))
+    else:
+        P.cbox("mirror_stem", (0.02, 0.06, 0.02), b.c["dark"], centre=(0, ws["top_y"] - 0.03, ws["top_z"] - 0.06))
     # Aimed like a driver sets it: the line from the eye reflects straight back through the rear window,
     # a little down (the face's normal halfway between "to the eye" and "straight back").
     from mathutils import Matrix, Vector
-    pos = (0.0, ws["top_y"] - 0.08, ws["top_z"] - 0.07)
+    pos = (0.0, ws["top_y"] - 0.08, (zm - 0.01) if ceil else ws["top_z"] - 0.07)
     g = b.m.get("rear_glass")   # aimed at the middle of the rear window when there is one
     back = (Vector((0, (g[2] + g[3]) / 2, b.m["rear"])) - Vector(pos)) if g else Vector((0, -0.03, -1))
     n = ((Vector(L.eye) - Vector(pos)).normalized() + back.normalized()).normalized()
@@ -742,9 +773,8 @@ def features(b):
     if "winch_lever" in f:   # Power Wagon: PTO lever for the front winch, by the gear lever
         k.lever("winch_lever", (L.m(0.17), L.floor + cfg.get("tunnel_h", 0.20), L.eye[2] + 0.18), 0.40, 18, 0.03,
                 b.c["knob3"], boot=0.04, shaft_r=0.011)
-    if "fj_bits" in f:   # FJ40 / FJ45: closed copies of the hood box and the wipers (measured by hand)
-        P.prism("hood_box", [(0.416, 1.356), (0.416, 1.462), (0.43, 1.477), (0.485, 1.477), (0.498, 1.462),
-                             (0.498, 1.356)], "x", -0.617, -0.316, b.c["dark"])
+    if "fj_bits" in f:   # FJ40 / FJ45: closed copies of the wipers (measured by hand)
+        # (0.4.4: no closed copy of the body's hood box any more: the DingDing cuts that box out, cfg body_cut)
         for i, (x0, x1) in enumerate(((-0.584, -0.150), (-0.044, 0.391))):
             P.box(f"wiper_blade{i}", (x0, 1.536, 0.392), (x1, 1.568, 0.418), b.c["dark"])
         for i, (x0, x1) in enumerate(((-0.043, -0.307), (0.498, 0.234))):
@@ -786,7 +816,8 @@ def build(k, cfg):
     ws.update(cfg.get("ws", {}))   # measured by hand where the rays get it wrong (wipers lying across the glass)
     # The measured top of the windscreen tends to come out low, which hangs a big header slab into the
     # view: keep the header at most 11 cm deep.
-    ws["top_y"] = max(ws["top_y"], m["roof"] - 0.11)
+    # (cfg header_max: a van whose roof rounds down far above the screen keeps its measured top, Rust Ox 0.4.4)
+    ws["top_y"] = max(ws["top_y"], m["roof"] - cfg.get("header_max", 0.11))
     # Side windows at head height only (no tail lights, no wrapped windscreen corners); the belt line and
     # window tops from those. And ONE cabin half-width for all lining (the per-spot wall probes of the kit
     # catch roof rails and the like inside the body and then line the cabin far too narrow).
@@ -810,6 +841,7 @@ def build(k, cfg):
     # Side lining bent to the body + a headliner that follows the roof: on by default since 0.4.3 (less of the game's
     # paint shows inside on most cars); cars_v2 turns it off where the renders looked worse (2026-11-08 check).
     k.fit_sides = bool(cfg.get("fit_sides", True))
+    k.fit_roof = cfg.get("fit_roof")
     door_win =max(m["windows"], key=lambda w_: w_[1]) if m["windows"] else (ez_ - 0.5, ez_ + 0.3)
     k.section_z = (door_win[0] + 0.05, min(door_win[1], ws["base_z"] - 0.05) - 0.05)
     print(f"v2 cabin: half width {half:.3f}, belt {m['belt']:.3f}, window top {m['win_top']:.3f}, windows {len(m['windows'])}")
@@ -828,7 +860,7 @@ def build(k, cfg):
     # build_car_v2.py); a straight beam beside them looked like a second pillar with glass between the two.
     # (cfg a_beam=True brings the beams back for a car.)
     k.lining(dict(m, windows=doors_ or m["windows"]), b.c["liner"], front_z=win_front + 0.02,
-             skip=() if cfg.get("a_beam") else ("a_pillars",))
+             skip=(() if cfg.get("a_beam") else ("a_pillars",)) + tuple(cfg.get("lining_skip", ())))
     if "body_bits" in b.feat:
         k.body_bits(m)
     if "fj_bits" not in b.feat:   # (the FJs have hand-made closed wipers)
@@ -854,5 +886,5 @@ def build(k, cfg):
     signatures_v2.settle_props(skip={k.body.name})
     soften()
     if cfg.get("side_mirrors", True):
-        k.side_mirrors(L.eye)
+        k.side_mirrors(L.eye, weld=cfg.get("mirror_weld", False))
     return L

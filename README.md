@@ -23,7 +23,7 @@ Uninstall: `Uninstall.bat`. The installer lives in the OTH Wheel repository; bot
 ## How to use
 
 - **Get in / out:** F6, or zoom in past the closest chase view / zoom out.
-- **Look around:** mouse or gamepad right stick; the head turns back to the front by itself and leans into corners a bit.
+- **Look around:** mouse or gamepad right stick; the head turns back to the front by itself and leans into corners a bit (numpad 5 switches that off and back on; with OTH Wheel 1.2.0 or newer also F3 > Camera > "Cockpit: look into turns").
 - **Seat:** numpad 8/2, 4/6, 9/3 move it; 7/1 tilt the view; +/- zoom.
 - **Mirrors:** the rear-view and side mirrors show what's behind you, with a wide view like a convex mirror (`[Mirrors] WideAngle`); the rear-view mirror is half as big again (`[Mirrors] RearViewSize`). `[Mirrors] Quality` (Low, Medium, High, Ultra) in the settings file to suit your PC; `[Mirrors] Enabled = false` switches them off.
 - Settings: `UserData\OthCockpit\jonkomonk.oth.cockpit.cfg` (MelonLoader) or `BepInEx\config\jonkomonk.oth.cockpit.cfg`, re-read while the game runs.

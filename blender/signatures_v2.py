@@ -211,10 +211,14 @@ def mug(c, name, x, y, z, col=(0.86, 0.36, 0.22)):
     loose(name, name + "_handle")
 
 
-def gloves(c, x, y, z, rot=20):
+def gloves(c, x, y, z, rot=20, tilt=0.0):
+    """tilt: the surface's rise towards the windscreen in degrees (the pair lies on that slope, (x, y, z) =
+    the middle of the lower glove)."""
     g = M("gloves", (0.78, 0.62, 0.36))
+    t = Rx(-tilt)
     for i in range(2):
-        P.place(P.cbox(f"glove{i}", (0.10, 0.025, 0.17), g), (x + i * 0.06, y + i * 0.025, z - i * 0.03), Ry(rot + i * 25))
+        o = Vector((x, y, z)) + t @ Vector((i * 0.06, i * 0.025, -i * 0.03))
+        P.place(P.cbox(f"glove{i}", (0.10, 0.025, 0.17), g), tuple(o), t @ Ry(rot + i * 25))
     loose("glove0", "glove1")   # one on the other: they move together
 
 
@@ -359,17 +363,18 @@ def protector(b):
     body(c, "shelf", [(c.fz - 0.16, c.fb + 0.04), (c.fz - 0.16, c.fb + 0.08), (c.fz - 0.14, c.fb + 0.08), (c.fz - 0.14, c.fb + 0.06),
                       (c.fz + 0.10, c.fb + 0.06), (c.fz + 0.10, c.fb + 0.04)], b.c["panel"])
     P.box("shelf_back", (-c.w, c.fb + 0.04, c.fz + 0.08), (c.w, c.ft - 0.02, c.fz + 0.12), d)
-    # Binnacle on top, read over the wheel.
-    z = c.fz - 0.07
-    y = max(c.L.sight_y(z) + 0.075, c.ft + 0.02)
-    pod = P.empty("binnacle", (c.dx, y, z), Rx(16))   # read over the wheel: already clear, not slid
+    # Binnacle sunk into the dash top, read through the wheel (0.4.4 build 2: on top of the dash, read over the
+    # rim, it stood 25 cm up into the windscreen and hid the road: his test 11-13 + a Nexus player).
+    z = c.fz - 0.08
+    y = c.ft - 0.02   # build 3: 1 cm up + back, wheel 4 cm lower ("smushed behind the wheel")
+    pod = P.empty("binnacle", (c.dx, y, z), Rx(16))
     P.box("pod_housing", (-0.215, -0.085, 0.0), (0.215, 0.095, 0.12), d, parent=pod)
     P.box("pod_visor", (-0.225, 0.095, -0.06), (0.225, 0.115, 0.12), b.c["pad"], parent=pod)
     gauge(b, "speedo", -0.077, 0.01, 0.062, -0.002, pod)
     gauge(b, "tacho", 0.077, 0.01, 0.062, -0.002, pod)
     gauge(b, "fuel", -0.168, -0.058, 0.025, -0.002, pod)
     gauge(b, "temp", 0.168, -0.058, 0.025, -0.002, pod)
-    lamps(b, {"handbrake": -0.20, "engine": -0.172, "headlights": 0.172, "lowrange": 0.20}, 0.08, -0.002, pod, r=0.01)
+    lamps(b, {"handbrake": -0.20, "engine": -0.172, "headlights": 0.172, "lowrange": 0.20}, 0.08, -0.004, pod, r=0.01)   # -0.002: flicker with the housing (build 3)
     gear_display(b, 0.0, -0.065, -0.002, pod, size=0.028)
     # Centre console from the dash down to the floor.
     L = c.L
@@ -381,8 +386,9 @@ def protector(b):
         P.box(f"heater_tab{i}", (x - 0.016, c.cy - 0.025 + i * 0.03, c.fz - 0.17), (x + 0.016, c.cy - 0.005 + i * 0.03, c.fz - 0.1415),
               b.c["knob3"] if i == 1 else b.c["metal"])   # (the top tab's top was flush with the slot's: flicker)
     cassette_deck(c, "radio", 0.0, c.fb - 0.03, c.fz - 0.14, w=0.17)
-    P.box("cubby_box", (-0.16, L.floor + 0.25, L.eye[2] - 0.40), (0.16, L.floor + 0.48, L.eye[2] - 0.02), d)
-    P.box("cubby_lid", (-0.165, L.floor + 0.48, L.eye[2] - 0.405), (0.165, L.floor + 0.50, L.eye[2] - 0.015), b.c["seat"])
+    # 18 cm wide (was 32): the handbrake beside it lay in it when pulled (0.4.4 build 5)
+    P.box("cubby_box", (-0.09, L.floor + 0.25, L.eye[2] - 0.40), (0.09, L.floor + 0.48, L.eye[2] - 0.02), d)
+    P.box("cubby_lid", (-0.095, L.floor + 0.48, L.eye[2] - 0.405), (0.095, L.floor + 0.50, L.eye[2] - 0.015), b.c["seat"])
     mug(c, "mug", c.p(0.40), c.fb + 0.065, c.fz - 0.05, col=(0.30, 0.42, 0.30))
 
 
@@ -663,7 +669,12 @@ def blastwagon(b):
     knob_row(c, "pull_throttle", (c.dx + c.p(0.30), c.dx + c.p(0.36)), c.fb + 0.05, c.fz, b.c["knob"], r=0.013, length=0.06)
     knob_row(c, "dash_bolt", [(-c.w + 0.06) + i * (2 * c.w - 0.12) / 11 for i in range(12)], c.ft - 0.02, c.fz, b.c["dark"],
              r=0.006, length=0.005)
-    gloves(c, c.p(0.40), c.ft + 0.025, c.fz - 0.02)
+    # The gloves lie ON the sloping dash top (flat they sank into it at the back and hung over the lip: 0.4.4).
+    z0, y0 = c.fz - 0.03, c.ft + 0.02
+    a = math.atan2(c.top - y0, c.front - z0)
+    gz = z0 + min(0.11, (c.front - z0) / 2)
+    gloves(c, c.p(0.40), y0 + (gz - z0) * math.tan(a) + 0.0125 / math.cos(a) + 0.001, gz, tilt=math.degrees(a))
+    print(f"gloves on the dash top: slope {math.degrees(a):.1f} deg, depth {c.front - z0:.3f}")
 
 
 def boar(b):
@@ -1021,6 +1032,255 @@ def rustox(b):
     cassette_deck(c, "radio", c.p(0.10), c.cy - 0.04, c.fz, w=0.18)
     cushion, back_z = seat_dims(c)
     beads(c, c.L.dx, cushion, back_z)
+    camper(c)
+
+
+def camper(c):
+    """The Rust Ox's camper box, open behind the front seats (0.4.4; until 0.4.3 a checked curtain closed it off
+    and the box's own body showed through as blotches: his video 2026-11-08 18-10). Lining where the kit's lining
+    stops (under and over the camper windows, which sit higher than the cab's; the rear doors with BOTH their
+    windows), then what the game's own text gives it: a bed, cupboards, a coffee pot and a shelf that keeps the
+    biscuits in one piece."""
+    b, k, L, m = c.b, c.k, c.L, c.b.m
+    S = k.sampler
+    floor, roof, rear, belt, top = L.floor, m["roof"], m["rear"], m["belt"], m["win_top"]
+    side_wins = sorted(m["windows"])
+
+    def inner(y0, y1, z0, z1, s):   # |x| furniture may reach against a side wall
+        return k.wall(y0, y1, z0, z1, s) - 0.015
+
+    # -- Lining the kit leaves open: under and over side windows that don't reach the belt / window-top line.
+    for i, (z0, z1, y0, y1) in enumerate(side_wins):
+        for s in (-1, 1):
+            sd = "L" if s < 0 else "R"
+            if y0 - belt > 0.02:
+                k.side_panel(f"win_low{i}_{sd}", belt, y0 + 0.01, z0 - 0.01, z1 + 0.01, s)
+            if top - y1 > 0.02:
+                k.side_panel(f"win_high{i}_{sd}", y1 - 0.01, top, z0 - 0.01, z1 + 0.01, s)
+
+    # -- Rear wall: follows the rear doors' lean and the roof's round-over at the back, a hole for each door window.
+    ys = [floor + i * 0.025 for i in range(int((roof - 0.03 - floor) / 0.025) + 1)]
+    rz = {}
+    for y in ys:
+        p, _, _ = S.hit((0.0, y, rear + 0.6), (0, 0, -1), 1.5)
+        rz[y] = (p.z if p is not None else rear) + 0.012
+
+    def rear_piece(name, x0, x1, y0, y1):
+        pts = [y for y in ys if y0 < y < y1]
+        prof_y = [y0] + pts + [y1]
+
+        def zat(y):
+            near = min(ys, key=lambda q: abs(q - y))
+            return rz[near]
+        outline = [(zat(y), y) for y in prof_y] + [(zat(y) + 0.025, y) for y in reversed(prof_y)]
+        return P.prism(name, outline, "x", x0, x1, k.paint, uv=k.uv("rear wall", (0, (floor + roof) / 2, rear + 0.5), (0, 0, -1)))
+
+    rw = min(inner(floor + 0.2, top, rear + 0.05, rear + 0.3, s) for s in (-1, 1)) - 0.005   # inside the side lining's face
+    g = m["rear_glass"]   # the bigger (left) door window; the right one is its mirror image
+    if g:
+        gx = max(abs(g[0]), abs(g[1])) + 0.02
+        gi = max(0.02, min(abs(g[0]), abs(g[1])) - 0.02)
+        gy0, gy1 = g[2] - 0.025, g[3] + 0.02   # (- 0.025: its top not level with the side lining's at the belt: flicker)
+        rear_piece("rear_wall_low", -rw, rw, floor, gy0)
+        rear_piece("rear_wall_top", -rw, rw, gy1, roof - 0.03)
+        rear_piece("rear_wall_L", -rw, -gx, gy0, gy1)
+        rear_piece("rear_wall_mid", -gi, gi, gy0, gy1)
+        rear_piece("rear_wall_R", gx, rw, gy0, gy1)
+    else:
+        rear_piece("rear_wall", -rw, rw, floor, roof - 0.03)
+    zr = rz[min(ys, key=lambda q: abs(q - 0.8))] + 0.03   # in front of the rear wall, low down
+
+    wood, cream = M("camp_wood", (0.70, 0.52, 0.32)), M("camp_door", (0.90, 0.86, 0.76))
+    # Wood panelling on the camper's lower walls, from the rear doors to the window behind the seats. The kit's side
+    # lining there used the cab door's cross-section (with its entry step: a ledge all along the camper, his test
+    # 0.4.4), so it is cut back to the cab and the camper gets its own cross-section, measured in the box.
+    zw1 = side_wins[2][1] - 0.02 if len(side_wins) > 2 else L.eye[2] - 0.7
+    for sd in ("L", "R"):
+        ob = bpy.data.objects.get(f"quarter_{sd}")
+        if ob is not None:   # its rear cap moves forward to zw1 (Blender: game z = -y)
+            for v in ob.data.vertices:
+                if -v.co.y < zw1:
+                    v.co.y = -zw1
+    pz = [z for z in (-2.3, -2.0, -0.7, -0.4, -0.1, 0.2) if zr + 0.05 < z < zw1]
+    for s in (-1, 1):
+        prof = []
+        yy = floor + 0.01
+        while yy < belt + 0.001:
+            xs = sorted(abs(p.x) for p, _, kd in (S.hit((0.0, yy, z), (s, 0, 0), 2.0) for z in pz)
+                        if p is not None and abs(p.x) > 0.6)
+            if xs:
+                prof.append((min(yy, belt - 0.005), xs[len(xs) // 2]))
+            yy += 0.05
+        if len(prof) < 2:
+            continue
+        outline = [(s * (x - 0.022), y) for y, x in prof] + [(s * (x - 0.012), y) for y, x in reversed(prof)]
+        P.prism(f"camp_panel_{'L' if s < 0 else 'R'}", outline, "z", zr - 0.005, zw1, M("camp_panel", (0.78, 0.62, 0.42)))
+    # The cab's lining below the windows in a warm beige vinyl instead of the body colour: in his blue van the doors
+    # read as bare paint next to the wood camper (his test 11-13). Above the belt (pillars, window frames) stays paint.
+    vinyl = M("cab_vinyl", (0.70, 0.62, 0.50))
+    for name in ("door_L", "door_R", "quarter_L", "quarter_R", "kick_-1", "kick_1"):
+        ob = bpy.data.objects.get(name)
+        if ob is not None:
+            for i in range(len(ob.data.materials)):
+                ob.data.materials[i] = vinyl
+
+    # Above the windscreen the van's roof rounds down to the glass: a lining that follows it (the kit's header box
+    # is skipped for this car: it stood in that curve, and the bare body showed between it and the glass).
+    ws = L.ws
+    z_end = ws["top_z"] - 0.13 - 0.03   # tucked 3 cm under the headliner's front end
+    cove = []
+    y = ws["top_y"] + 0.005
+    while y < roof - 0.03:
+        zs_ = [p.z for p, _, kd in (S.hit((x_, y, L.eye[2]), (0, 0, 1), 1.5) for x_ in (-0.6, 0.0, 0.6)) if p is not None]
+        if not zs_:
+            break
+        cove.append((min(zs_) - 0.012, y))
+        if cove[-1][0] < z_end:
+            break
+        y += 0.01
+    if len(cove) >= 2:
+        cw_ = min(k.wall(cove[0][1], cove[-1][1], cove[-1][0], cove[0][0], s_) for s_ in (-1, 1)) - 0.02
+        outline = cove + [(z - 0.025, y_) for z, y_ in reversed(cove)]
+        P.prism("front_cove", outline, "x", -cw_, cw_, k.paint, uv=k.uv("header", (0, ws["top_y"] + 0.1, ws["top_z"] - 0.3), (0, 0.6, 1)))
+
+        def ceiling(z, cove=cove):   # the cove's underside at depth z (the visors and the mirror hang from it)
+            z += 0.025   # (the underside is the profile moved 2.5 cm towards the cabin)
+            for (za, ya), (zb, yb) in zip(cove, cove[1:]):
+                if zb <= z <= za:
+                    return ya + (yb - ya) * (za - z) / max(za - zb, 1e-6)
+            return cove[0][1] if z > cove[0][0] else cove[-1][1]
+        b.ceiling = ceiling
+        b.cove_lip_z = cove[0][0] - 0.025   # back face of the cove's near-vertical bottom lip by the glass
+        print(f"front cove: {len(cove)} heights, y {cove[0][1]:.3f}-{cove[-1][1]:.3f}, z {cove[-1][0]:.3f}-{cove[0][0]:.3f}")
+    top_mat, accent, teal, dark = M("camp_counter", (0.88, 0.56, 0.26)), b.c["accent"], b.c["seat2"], b.c["dark"]
+    metal = b.c["metal"]
+    zcab = L.eye[2] - 0.45   # where the cab's seats begin
+
+    # -- Floor: warm lino over the painted floor, from the rear doors to the seats; a rug in the aisle.
+    fw = min(inner(floor + 0.05, floor + 0.3, rear + 0.3, zcab, s) for s in (-1, 1))
+    P.box("camp_floor", (-fw, floor + 0.005, zr - 0.03), (fw, floor + 0.014, zcab), M("camp_lino", (0.62, 0.46, 0.30)))
+    P.box("camp_rug", (-0.30, floor + 0.014, -0.80), (0.30, floor + 0.020, 0.25), accent)
+
+    # -- Bed across the back, over the rear wheel arches' height: wooden base, teal mattress with orange checks,
+    #    two pillows on the left, a folded blanket on the right.
+    bz0, bz1 = zr, -1.75
+    bw = min(inner(floor + 0.2, 0.95, bz0, bz1, s) for s in (-1, 1))
+    by = floor + 0.52
+    P.box("bed_base", (-bw, floor + 0.014, bz0), (bw, by, bz1), wood)
+    P.box("bed_front", (-bw + 0.02, floor + 0.08, bz1), (bw - 0.02, by - 0.04, bz1 + 0.01), cream)
+    for i, x in enumerate((-bw * 0.5, bw * 0.5)):
+        P.box(f"bed_handle{i}", (x - 0.06, by - 0.10, bz1 + 0.01), (x + 0.06, by - 0.08, bz1 + 0.025), metal)
+    P.box("mattress", (-bw + 0.01, by, bz0 + 0.01), (bw - 0.01, by + 0.13, bz1 - 0.01), teal)
+    for i in range(4):
+        x = -bw + 0.25 + i * (2 * bw - 0.5) / 3
+        P.box(f"mattress_check{i}", (x - 0.05, by + 0.13, bz0 + 0.02), (x + 0.05, by + 0.134, bz1 - 0.02), accent)
+    for i in range(2):
+        P.place(P.cbox(f"pillow{i}", (0.42, 0.10, 0.30), cream), (-bw + 0.30, by + 0.13 + 0.05 + i * 0.07, (bz0 + bz1) / 2 + 0.02 * i),
+                Ry(8 - 14 * i))
+    P.place(P.cbox("blanket", (0.40, 0.12, 0.55), accent), (bw - 0.32, by + 0.13 + 0.06, (bz0 + bz1) / 2), Ry(-6))
+    P.place(P.cbox("blanket_fold", (0.40, 0.01, 0.55), teal), (bw - 0.32, by + 0.13 + 0.125, (bz0 + bz1) / 2), Ry(-6))
+
+    # -- Kitchen block on the left over the wheel arch: cupboards, an orange worktop, a two-ring stove with the
+    #    coffee pot on it, a sink with a tap.
+    kz0, kz1 = -1.72, -0.86
+    kw = inner(floor + 0.3, 1.05, kz0, kz1, -1)
+    kx = -kw + 0.55
+    ky = floor + 0.78
+    P.box("kitchen", (-kw, floor + 0.014, kz0), (kx, ky, kz1), wood)
+    for i in range(2):
+        za, zb = kz0 + 0.04 + i * (kz1 - kz0 - 0.08) / 2 + 0.01, kz0 + 0.04 + (i + 1) * (kz1 - kz0 - 0.08) / 2 - 0.01
+        P.box(f"kitchen_door{i}", (kx, floor + 0.10, za), (kx + 0.01, ky - 0.06, zb), cream)
+        kz = zb - 0.05 if i == 0 else za + 0.02
+        P.box(f"kitchen_knob{i}", (kx + 0.01, ky - 0.14, kz), (kx + 0.03, ky - 0.11, kz + 0.03), metal)
+    P.box("worktop", (-kw, ky, kz0 - 0.01), (kx + 0.03, ky + 0.035, kz1 + 0.01), top_mat)
+    wy = ky + 0.035
+    sx, sz = (-kw + kx) / 2, kz1 - 0.22
+    P.box("stove", (sx - 0.20, wy, sz - 0.15), (sx + 0.20, wy + 0.012, sz + 0.15), dark)
+    for i, dz in enumerate((-0.075, 0.075)):
+        P.place(P.torus(f"stove_ring{i}", 0.05, 0.007, metal, n=16, m=4), (sx + 0.05, wy + 0.016, sz + dz), Rx(-90))
+    # Coffee pot (an enamel percolator) on the front ring, a mug beside it.
+    px_, pz_ = sx + 0.05, sz + 0.075
+    pot = M("coffee_pot", (0.82, 0.24, 0.18))
+    P.place(P.cylinder("coffee_pot", 0.055, 0.15, pot, n=14, r1=0.045), (px_, wy + 0.012, pz_), Rx(-90))
+    P.place(P.cylinder("coffee_lid", 0.045, 0.03, pot, n=14, r1=0.02), (px_, wy + 0.162, pz_), Rx(-90))
+    P.place(P.ball("coffee_knob", 0.014, M("coffee_glass", (0.85, 0.62, 0.25)), rings=4, segs=8), (px_, wy + 0.196, pz_))
+    P.cbox("coffee_handle", (0.02, 0.10, 0.02), dark, centre=(px_ - 0.075, wy + 0.09, pz_))
+    P.cbox("coffee_handle_top", (0.04, 0.015, 0.016), dark, centre=(px_ - 0.055, wy + 0.135, pz_))
+    P.place(P.cylinder("coffee_spout", 0.012, 0.06, pot, n=8), (px_ + 0.05, wy + 0.10, pz_), Rz(-50) @ Rx(-90))
+    mug(c, "camp_mug2", sx - 0.12, wy, sz + 0.10, col=(0.30, 0.48, 0.56))
+    # Sink at the rear end of the worktop.
+    snx, snz = (-kw + kx) / 2, kz0 + 0.20
+    P.box("sink", (snx - 0.16, wy - 0.004, snz - 0.13), (snx + 0.16, wy + 0.002, snz + 0.13), metal)
+    P.box("sink_hole", (snx - 0.13, wy + 0.002, snz - 0.10), (snx + 0.13, wy + 0.003, snz + 0.10), M("sink_dark", (0.40, 0.42, 0.44)))
+    P.place(P.cylinder("tap", 0.01, 0.14, metal, n=8), (-kw + 0.06, wy, snz), Rx(-90))
+    P.place(P.cylinder("tap_spout", 0.008, 0.10, metal, n=8), (-kw + 0.06, wy + 0.14, snz), Ry(90))
+
+    # -- Right: a low cupboard over the arch, and above it on the wall the biscuit shelf: a deep lip, two rails
+    #    across the front and the tins standing between them.
+    cw = inner(floor + 0.3, 1.0, kz0, kz1, 1)
+    cx = cw - 0.56   # deep enough to hide the wheel well's inside (it showed beside a 45 cm cupboard)
+    cy = floor + 0.70
+    P.box("cupboard", (cx, floor + 0.014, kz0), (cw, cy, kz1), wood)
+    for i in range(2):
+        za, zb = kz0 + 0.04 + i * (kz1 - kz0 - 0.08) / 2 + 0.01, kz0 + 0.04 + (i + 1) * (kz1 - kz0 - 0.08) / 2 - 0.01
+        P.box(f"cupboard_door{i}", (cx - 0.01, floor + 0.10, za), (cx, cy - 0.06, zb), cream)
+        kz = zb - 0.05 if i == 0 else za + 0.02
+        P.box(f"cupboard_knob{i}", (cx - 0.03, cy - 0.14, kz), (cx - 0.01, cy - 0.11, kz + 0.03), metal)
+    P.box("cupboard_top", (cx - 0.02, cy, kz0 - 0.01), (cw, cy + 0.03, kz1 + 0.01), top_mat)
+    shy = belt + 0.04
+    sw = inner(shy - 0.02, shy + 0.15, kz0, kz1, 1)
+    sz0, sz1 = kz0 + 0.06, kz1 - 0.06
+    P.box("biscuit_shelf", (sw - 0.17, shy, sz0), (sw, shy + 0.02, sz1), wood)
+    P.box("biscuit_shelf_lip", (sw - 0.17, shy + 0.02, sz0), (sw - 0.155, shy + 0.06, sz1), wood)
+    for j, z in enumerate((sz0, sz1)):
+        P.box(f"biscuit_shelf_end{j}", (sw - 0.178, shy - 0.005, z if j else z - 0.012), (sw - 0.003, shy + 0.13, z + 0.012 if j else z), wood)
+    for j, ry in enumerate((0.07, 0.11)):
+        k.beam(f"biscuit_rail{j}", (sw - 0.165, shy + ry, sz0 + 0.012), (sw - 0.165, shy + ry, sz1 - 0.012), 0.012, 0.012, metal)
+    tins = ((0.78, 0.20, 0.16), (0.22, 0.38, 0.62), (0.92, 0.74, 0.26), (0.30, 0.52, 0.34))
+    for i, col in enumerate(tins):
+        z = sz0 + 0.09 + i * (sz1 - sz0 - 0.18) / (len(tins) - 1)
+        r = 0.055 if i % 2 == 0 else 0.048
+        h = 0.11 if i % 2 == 0 else 0.15
+        P.place(P.cylinder(f"biscuit_tin{i}", r, h, M(f"tin{i}", col), n=14), (sw - 0.085, shy + 0.02, z), Rx(-90))
+        P.place(P.cylinder(f"biscuit_lid{i}", r + 0.004, 0.012, metal, n=14), (sw - 0.085, shy + 0.02 + h, z), Rx(-90))
+
+    # -- Overhead lockers along both sides, from the bed to the kitchen's front, under the roof's curve.
+    lz0, lz1 = zr + 0.06, kz1
+    for s in (-1, 1):
+        sd = "L" if s < 0 else "R"
+        lw = inner(top + 0.02, top + 0.20, lz0, lz1, s)
+        y_roof = 9.0
+        for t in (0.1, 0.5, 0.9):
+            p, _, _ = S.hit((s * (lw - 0.03), top, lz0 + (lz1 - lz0) * t), (0, 1, 0), 1.0)
+            if p is not None:
+                y_roof = min(y_roof, p.y)
+        ly0, ly1 = top + 0.03, min(y_roof - 0.04, top + 0.30)
+        if ly1 - ly0 < 0.12:
+            continue
+        x0, x1 = sorted((s * (lw - 0.32), s * lw))
+        P.box(f"locker_{sd}", (x0, ly0, lz0), (x1, ly1, lz1), wood)
+        n = 3
+        fx = s * (lw - 0.32)
+        for i in range(n):
+            za = lz0 + 0.02 + i * (lz1 - lz0 - 0.04) / n + 0.01
+            zb = lz0 + 0.02 + (i + 1) * (lz1 - lz0 - 0.04) / n - 0.01
+            d0, d1 = sorted((fx, fx - s * 0.01))
+            P.box(f"locker_door_{sd}{i}", (d0, ly0 + 0.02, za), (d1, ly1 - 0.02, zb), cream)
+            h0, h1 = sorted((fx - s * 0.01, fx - s * 0.03))
+            P.box(f"locker_handle_{sd}{i}", (h0, ly0 + 0.03, (za + zb) / 2 - 0.05), (h1, ly0 + 0.05, (za + zb) / 2 + 0.05), accent)
+
+    # -- Short striped curtains tied back at the camper windows (the old curtain's colours).
+    for i, (z0, z1, y0, y1) in enumerate(side_wins):
+        if not (bz1 < (z0 + z1) / 2 < 0.0) or y1 - y0 > 0.6:
+            continue
+        for s in (-1, 1):
+            sd = "L" if s < 0 else "R"
+            w_ = inner(y0, y1, z0, z1, s)
+            for j, (za, zb) in enumerate(((z0 - 0.07, z0 + 0.01), (z1 - 0.01, z1 + 0.07))):
+                x0, x1 = sorted((s * (w_ - 0.045), s * (w_ - 0.02)))
+                P.box(f"win_curtain{i}_{sd}{j}", (x0, y0 - 0.04, za), (x1, y1 + 0.04, zb), accent if j else teal)
+            x0, x1 = sorted((s * (w_ - 0.03), s * (w_ - 0.005)))
+            P.box(f"win_rail{i}_{sd}", (x0, y1 + 0.045, z0 - 0.08), (x1, y1 + 0.055, z1 + 0.08), metal)
 
 
 def _loaf(c, x, y, z, rot=30):

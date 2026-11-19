@@ -47,7 +47,7 @@ internal static class Settings
         LookReturn = cfg.Bind("Look", "ReturnAfter", 1.5f,
             "Seconds without look input before the head turns back to the front. 0 = stay where you looked.");
         LookIntoTurn = cfg.Bind("Look", "IntoTurn", 30f,
-            "Turn the head towards where you steer, degrees at full steering lock (from about 15 km/h). 0 = off.");
+            "Turn the head towards where you steer, degrees at full steering lock (from about 15 km/h). 0 = off. NumPad5 in the cockpit switches it off/on; with the OTH Wheel mod also F3 > Camera.");
 
         EarsToCentre = cfg.Bind("Sound", "EarsToCentre", 0.7f,
             "In the cockpit, hear from this far towards the middle of the car (0 = from your seat, like the game: the car " +
@@ -77,6 +77,8 @@ internal static class Settings
             "(Custom quality) Sharpness of the mirror pictures: 1 = normal, 0.5 = half (faster), 2 = double.");
         MirrorUpdateEvery = cfg.Bind("Mirrors", "UpdateEvery", 2f,
             "(Custom quality) Draw each mirror every this many frames (1 = every frame: smoothest, slowest; 2 = every other frame, the mirrors take turns).");
+
+        UpdateCheck.Bind(cfg);
 
         _lastWrite = File.Exists(cfg.ConfigFilePath) ? File.GetLastWriteTimeUtc(cfg.ConfigFilePath) : DateTime.MinValue;
     }

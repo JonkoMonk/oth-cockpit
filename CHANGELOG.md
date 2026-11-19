@@ -6,8 +6,40 @@ PATCH for fixes only. 1.0.0 when every car is finished and it leaves alpha.
 
 ## Planned
 
+- Hood (bonnet) camera view: the camera low on the bonnet, no interior (version not set)
 - 0.5.0: customise the interior
 - 1.0.0: out of alpha
+
+## 0.4.4-alpha (2026-11-19)
+
+- You can see the road better in two cars (thanks to the players on Nexus and YouTube who told us the dash was in
+  the way):
+  - DingDing: a painted strip ran along the bottom of the windscreen, between the glass and the dash, and hid the
+    road. It's gone: the windscreen now runs down to the dash, and you look over the bonnet like in the real car.
+    The dark box that sat on top of the dash right in front of you is gone too.
+  - Protector: the instrument pod sat high on top of the dash. It now sits down in the dash, and the wheel is a
+    little lower, so you read the dials over the rim.
+- Rust Ox: the back is a real camper now. Behind the seats there's a bed across the back, a little kitchen (a
+  two-ring stove, a coffee pot and a sink), a cupboard, lockers along the roof, curtains at the windows and a shelf
+  with rails that keeps the biscuit tins in place on rough roads. The blotchy patches on the high roof and the
+  cream blocks by the rear side windows are gone, and both rear-door windows are clear.
+- Rust Ox cab: the rear-view mirror and the sun visors hang under the round front roof (they were stuck up inside
+  it), the side lining and the door panels are straight and sit on the doors, the gear and handbrake levers stand
+  on the engine box instead of sinking into it, and the lower walls and doors are beige to go with the camper.
+- Rust Ox: the outside mirrors work. They only showed a grey slab before.
+- Handbrakes: pulled, the lever went through the seat or touched it in several cars. It now stays clear of the
+  seat in the Brick, Roamer, Lynx, Protector, Tinny, Wombat, Mammoth, Marshal and Polyana. The Blast Wagon has a
+  bench seat, so its handbrake is now a pull handle under the dash, and the Marshal's levers stand on its engine
+  box.
+- Blast Wagon: the gloves on the dashboard lie on the sloping dash top instead of half sinking into it and
+  flickering.
+- Look into turns (the view turning into bends) can be switched off and back on with NumPad5 in the cockpit. With
+  OTH Wheel 1.2.0 or newer you can also set it in F3 > Camera > "Cockpit: look into turns" (off, 10 to 60 degrees).
+- Update notice: when a newer version is out, a message in the game's menu (main menu or pause menu) says so once,
+  with a button that opens the Nexus page and a "Don't show this again" box (ticked = not again for that version; a
+  newer one is shown once more). With OTH Wheel 1.2.0 or newer it's one message for both mods. Nothing is downloaded
+  by itself. The mod asks GitHub once per game start and sends nothing about you; switch it off with
+  `[Updates] Check = false` in the cockpit's settings file.
 
 ## 0.4.3-alpha (2026-11-08)
 

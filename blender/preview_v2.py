@@ -258,6 +258,10 @@ def render(k, cars_folder, eye, out_folder, shots=None, samples=32, res=1.0, pre
     """shots: {name: (pos or None, rotation, fov)}; default: the driver's view with the user's settings."""
     shots = shots or {"user": (None, Rx(6), 85)}
     _paint_textures(k, cars_folder)
+    copy = bpy.data.objects.get("game_body")
+    if copy is not None:   # the body copy stands in for the game's body (kit.body_copy)
+        copy.data.materials[0] = k.body.data.materials[0]
+        k.body.hide_render = True
     _pose_moving_parts()
     _world()
     _cycles(samples, res)

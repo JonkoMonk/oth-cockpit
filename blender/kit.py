@@ -60,6 +60,7 @@ class Kit:
 
     def __init__(self, car, cars_folder):
         self.car = car
+        self.folder = cars_folder
         self.body = carref.load_body(car, cars_folder)
         self.body.data.materials[0].use_backface_culling = True   # like in the game: from inside it's see-through
         self.sampler = carref.PaintSampler(self.body, cars_folder, car)
@@ -422,6 +423,12 @@ class Kit:
     # roof (fitted_panel, headliner). v2 cars: on by default since 0.4.3 (styles_v2), off for the 5 cars where
     # the renders looked worse (cars_v2). The "new flicker" it seemed to cause was a false alarm of the check.
     fit_sides = False
+    # The roof lining alone (headliner following the roof, roof edges 1.5 cm short of it); None = same as fit_sides.
+    # Rust Ox 0.4.4: fitted roof but straight side panels (bent ones stepped through its cab's door cards).
+    fit_roof = None
+
+    def roof_fitted(self):
+        return self.fit_sides if self.fit_roof is None else self.fit_roof
 
     def wall_x(self, y, s=-1):
         """Inner |x| of the body's side at height y (None where it's glass all along the door)."""
@@ -739,7 +746,7 @@ class Kit:
             if roof - top > 0.03:
                 # Bent to the body (fitted_panel), its top edge would lie on a curved roof's inside, on the
                 # copy inner_skins puts there (flicker): stop 1.5 cm short, the headliner follows the roof down.
-                self.side_panel(f"roof_edge_{side}", top, roof - (0.015 if self.fit_sides else 0.0),
+                self.side_panel(f"roof_edge_{side}", top, roof - (0.015 if self.roof_fitted() else 0.0),
                                 rear, front, s)
             # A pillar along the windscreen edge.
             if "a_pillars" not in skip:
@@ -772,7 +779,7 @@ class Kit:
             if moved:
                 print(f"header: front steps back behind the windscreen glass at {moved} of {n} heights")
         if "headliner" not in skip:
-            if not self.fit_sides:
+            if not self.roof_fitted():
                 P.box("headliner", (-hw + 0.01, roof - 0.03, rear + 0.01), (hw - 0.01, roof - 0.005, ws["top_z"] - 0.13), liner)
             else:
                 self.headliner(hw, roof, rear + 0.01, ws["top_z"] - 0.13, liner)
@@ -1204,7 +1211,7 @@ class Kit:
             made.append(side)
         return made
 
-    def inner_skins(self, eye, seat=(0.0, 0.02, -0.12), max_dist=1.6, inset=0.003):
+    def inner_skins(self, eye, seat=(0.0, 0.02, -0.12), max_dist=1.6, inset=0.003, open_boxes=()):
         """The game draws the car body from outside only, so from the seat the body's own pillars, window
         frames and roof edges are see-through wherever our lining doesn't cover them: the outside shows
         through the A pillars, the corners beside the windscreen and gaps above it ("pillars not connected").
@@ -1212,7 +1219,10 @@ class Kit:
         painted or trim body face seen from behind with nothing of ours and no glass in front of it, within
         max_dist; each gets a copy facing inwards with the body's own paint layout (one ring of back-facing
         neighbours too, so no single faces are missed between rays), inset mm towards the cabin. From inside
-        the body then looks like it does from outside. Run before frame_covers (it treats these as ours)."""
+        the body then looks like it does from outside. Run before frame_covers (it treats these as ours).
+        open_boxes: [((x0, y0, z0), (x1, y1, z1))] in game coordinates; body faces with their centre inside one
+        stay uncovered (see-through from the seat, as the game draws them): cfg skin_open (DingDing 0.4.4: the
+        tall frame under the windscreen glass read as a border hiding the road)."""
         import bmesh
         from mathutils.bvhtree import BVHTree
         from mathutils.interpolate import poly_3d_calc
@@ -1307,6 +1317,21 @@ class Kit:
             return False
 
         grown = {pi for pi in grown if opaque(pi) and not on_glass(pi)}
+        if open_boxes:
+            B2U_ = U2B3.inverted()
+
+            def is_open(pi):
+                c = B2U_ @ S.me.polygons[pi].center
+                return any(all(lo[i] <= c[i] <= hi[i] for i in range(3)) for lo, hi in open_boxes)
+            n_ = len(grown)
+            grown = {pi for pi in grown if not is_open(pi)}
+            print(f"inner skins: {n_ - len(grown)} body faces left open (skin_open)")
+            if os.environ.get("SKIN_OPEN_LIST"):
+                for pi in sorted(set(range(len(S.me.polygons))) - grown):
+                    if is_open(pi):
+                        poly = S.me.polygons[pi]
+                        vs_ = [tuple(round(c, 3) for c in B2U_ @ S.me.vertices[v].co) for v in poly.vertices]
+                        print("OPEN", pi, tuple(round(c, 3) for c in B2U_ @ poly.center), vs_)
         dbg = os.environ.get("SKIN_FACE")
         if dbg:
             fi = int(dbg)
@@ -1341,14 +1366,50 @@ class Kit:
         ob["mirror"] = which
         return ob
 
-    def side_mirrors(self, eye, out_min=0.03):
+    def side_mirrors(self, eye, out_min=0.03, weld=False):
         """The car's own outside mirrors: small separate body pieces outside the cabin, ahead of the eye and
         around eye height, with a flat face looking back at the driver. Each gets a mirror glass 3 mm in front
         of that face (a rectangle inside its outline, so a rim stays). Returns the sides found."""
+        best = self._mirror_scan(eye, out_min, weld=False, y_hi=0.15)
+        if weld and len(best) < 2:   # cfg mirror_weld (Rust Ox: van mirrors of loose 4-vertex quads, high up at eye + 0.21)
+            extra = self._mirror_scan(eye, out_min, weld=True, y_hi=0.40)
+            for side in extra:
+                best.setdefault(side, extra[side])
+        found = []
+        for side, (_, plane, n0) in best.items():
+            # Plane axes: a across (driver's right), b up; the glass is the outline's bounding box, 12% in.
+            ax = n0.cross(Vector((0, 1, 0))).normalized()
+            bx = ax.cross(n0).normalized()
+            pts = plane   # (filled by _mirror_scan: the face's points, game space)
+            o = sum(pts, Vector()) / len(pts)
+            us = [(p - o).dot(ax) for p in pts]
+            ws_ = [(p - o).dot(bx) for p in pts]
+            # The glass follows the face's own outline (convex hull; many mirrors have cut corners), shrunk 24%
+            # towards its middle so a rim stays.
+            hull = _hull2d(list(zip(us, ws_)))
+            hu = sum(p[0] for p in hull) / len(hull)
+            hw = sum(p[1] for p in hull) / len(hull)
+            outline = [(hu + (p[0] - hu) * 0.76, hw + (p[1] - hw) * 0.76) for p in hull]
+            u0, u1 = min(p[0] for p in outline), max(p[0] for p in outline)
+            w0, w1 = min(p[1] for p in outline), max(p[1] for p in outline)
+            # Object space: x = a, y = b, -z = towards the driver (n0), placed at the outline's centre.
+            from mathutils import Matrix
+            rot = Matrix((ax, bx, -n0)).transposed()
+            centre = o + n0 * 0.003
+            self.mirror_glass(f"mirror_glass_{side}", side, outline, 0.0, tuple(centre), rot)
+            found.append(f"{side} {abs(u1 - u0) * 100:.0f}x{abs(w1 - w0) * 100:.0f} cm at ({o.x:+.2f}, {o.y:.2f}, {o.z:+.2f})")
+        print(f"side mirrors: {', '.join(found) if found else 'none found'}")
+        return found
+
+    def _mirror_scan(self, eye, out_min, weld, y_hi):
+        """side_mirrors' search: {side: (score, points of the back face in game space, its normal)}.
+        weld: merge vertices that share a position first (mirrors made of loose quads)."""
         import bmesh
         B2U = carref.U2B3.inverted()
         bm = bmesh.new()
         bm.from_mesh(self.body.data)
+        if weld:
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
         bm.verts.ensure_lookup_table()
         seen, best = set(), {}
         e = Vector(eye)
@@ -1371,7 +1432,7 @@ class Kit:
             lo = Vector([min(p[i] for p in pts) for i in range(3)])
             hi = Vector([max(p[i] for p in pts) for i in range(3)])
             c = (lo + hi) / 2
-            if max(hi - lo) > 0.45 or abs(c.x) < self.half + out_min or not (e.z - 0.2 < c.z < e.z + 1.3)                     or not (e.y - 0.65 < c.y < e.y + 0.15):
+            if max(hi - lo) > 0.45 or abs(c.x) < self.half + out_min or not (e.z - 0.2 < c.z < e.z + 1.3)                     or not (e.y - 0.65 < c.y < e.y + y_hi):
                 continue
             # The face(s) looking back at the driver: the largest flat group facing backwards.
             faces = {f for q in isl for f in q.link_faces}
@@ -1391,34 +1452,9 @@ class Kit:
             side = "left" if c.x < 0 else "right"
             score = area - 0.02 * abs(c.y - e.y)
             if side not in best or score > best[side][0]:
-                best[side] = (score, plane, n0)
-        found = []
-        for side, (_, plane, n0) in best.items():
-            # Plane axes: a across (driver's right), b up; the glass is the outline's bounding box, 12% in.
-            ax = n0.cross(Vector((0, 1, 0))).normalized()
-            bx = ax.cross(n0).normalized()
-            vs = {q for f, _, _ in plane for q in f.verts}
-            pts = [B2U @ q.co for q in vs]
-            o = sum(pts, Vector()) / len(pts)
-            us = [(p - o).dot(ax) for p in pts]
-            ws_ = [(p - o).dot(bx) for p in pts]
-            # The glass follows the face's own outline (convex hull; many mirrors have cut corners), shrunk 24%
-            # towards its middle so a rim stays.
-            hull = _hull2d(list(zip(us, ws_)))
-            hu = sum(p[0] for p in hull) / len(hull)
-            hw = sum(p[1] for p in hull) / len(hull)
-            outline = [(hu + (p[0] - hu) * 0.76, hw + (p[1] - hw) * 0.76) for p in hull]
-            u0, u1 = min(p[0] for p in outline), max(p[0] for p in outline)
-            w0, w1 = min(p[1] for p in outline), max(p[1] for p in outline)
-            # Object space: x = a, y = b, -z = towards the driver (n0), placed at the outline's centre.
-            from mathutils import Matrix
-            rot = Matrix((ax, bx, -n0)).transposed()
-            centre = o + n0 * 0.003
-            self.mirror_glass(f"mirror_glass_{side}", side, outline, 0.0, tuple(centre), rot)
-            found.append(f"{side} {abs(u1 - u0) * 100:.0f}x{abs(w1 - w0) * 100:.0f} cm at ({o.x:+.2f}, {o.y:.2f}, {o.z:+.2f})")
+                best[side] = (score, [B2U @ q.co for q in {q for f, _, _ in plane for q in f.verts}], n0)
         bm.free()
-        print(f"side mirrors: {', '.join(found) if found else 'none found'}")
-        return found
+        return best
 
     def rear_view(self, eye, seen_min=0.35):
         """What the rear-view mirror would show from the driver's eye, like in a real car: the cabin and out
@@ -1519,9 +1555,70 @@ class Kit:
         for i, (a, b) in enumerate(arms):
             self.beam(f"wiper_arm{i}", a, b, 0.014, 0.012, self.wiper)
 
+    def body_copy(self, cut_boxes):
+        """The game's own body as one of our parts, with pieces cut out (cfg body_cut): while the cockpit view is
+        on, the mod switches the game's body off for our own car only and shows this instead (node extra
+        hide_game_body). For a piece of the game's body the cockpit can't hide any other way (the game's mesh
+        can't be changed by the mod). Same vertices, triangles, paint layout and normals as the game's mesh (normals
+        from tools/export_body_normals.py); in game it gets the car's own paint material, livery, dirt and snow, so
+        it looks the same. Cut: every separate piece of the mesh (faces joined by shared vertices) whose faces all
+        have their centre inside one of cut_boxes [((x0, y0, z0), (x1, y1, z1))], game coordinates.
+        DingDing 0.4.4: the dark box on the dash ahead of the driver (3 pieces, 38 triangles).
+        Run last, just before export: nothing else may treat it as ours."""
+        import json
+        path = os.path.join(self.folder, f"{self.car}_body_LOD0.normals.json")
+        with open(path) as f:
+            normals = json.load(f)
+        src = self.body.data
+        if len(normals) != len(src.vertices):
+            raise RuntimeError(f"{path}: {len(normals)} normals for {len(src.vertices)} vertices (re-export it)")
+        U = carref.U2B3
+        Ui = U.inverted()
+        parent = list(range(len(src.vertices)))
+
+        def root(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+        for p in src.polygons:
+            for v in p.vertices[1:]:
+                parent[root(v)] = root(p.vertices[0])
+        pieces = {}
+        for p in src.polygons:
+            pieces.setdefault(root(p.vertices[0]), []).append(p)
+
+        def inside(c):
+            g = Ui @ c
+            return any(all(lo[i] <= g[i] <= hi[i] for i in range(3)) for lo, hi in cut_boxes)
+        cut = set()
+        for faces in pieces.values():
+            if all(inside(p.center) for p in faces):
+                cut.update(p.index for p in faces)
+        keep = [p for p in src.polygons if p.index not in cut]
+        me = bpy.data.meshes.new(self.car + "_body_copy")
+        me.from_pydata([v.co.copy() for v in src.vertices], [], [list(p.vertices) for p in keep])
+        uv = me.uv_layers.new(name="UVMap")
+        suv = src.uv_layers[0].data
+        i = 0
+        for p in keep:
+            for li in p.loop_indices:
+                uv.data[i].uv = suv[li].uv
+                i += 1
+        me.update()
+        me.normals_split_custom_set_from_vertices([(U @ Vector(n)).normalized() for n in normals])
+        me.materials.append(self.paint)
+        ob = bpy.data.objects.new("game_body", me)
+        ob.matrix_world = self.body.matrix_world.copy()
+        ob["hide_game_body"] = "1"
+        bpy.context.scene.collection.objects.link(ob)
+        print(f"BODY COPY: {len(keep)} of {len(src.polygons)} body faces, {len(cut)} cut out")
+        return ob
+
     # ---- output ----
     def export(self, eye, assets, game_name=None):
-        P.check_flicker(exclude=[self.body], eye=eye)
+        # The body copy stands in for the game's body (switched off meanwhile): it can't flicker against it.
+        P.check_flicker(exclude=[self.body] + [o for o in bpy.data.objects if o.get("hide_game_body")], eye=eye)
         P.export(os.path.join(assets, f"Car_{game_name or self.car}.glb"), exclude=[self.body])
 
     def previews(self, eye, assets, shots):

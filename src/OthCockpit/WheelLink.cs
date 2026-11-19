@@ -14,7 +14,9 @@ internal static class WheelLink
 {
     const string TypeName = "OthWheel.CockpitLink";
     const BindingFlags Static = BindingFlags.Public | BindingFlags.Static;
-    static FieldInfo _active, _degrees, _lookX, _lookY, _toggles, _cockpitActive, _cockpitInstalled;
+    static FieldInfo _active, _degrees, _lookX, _lookY, _toggles, _cockpitActive, _cockpitInstalled, _intoTurn, _intoTurnSet;
+    static FieldInfo _wheelShows, _upChecked, _upLatest, _upInstalled, _upWhatsNew, _upUrl, _upPopup, _upDontShow;
+    static string _upShared;
     static float _nextSearch;
     static bool _logged, _lastCockpitActive;
     static int _lastToggles = int.MinValue;
@@ -64,6 +66,66 @@ internal static class WheelLink
         try { _cockpitActive.SetValue(null, on); _lastCockpitActive = on; } catch { }
     }
 
+    // The F3 menu's "Cockpit: look into turns" (wheel mod 1.2.0+): shows our value, and a change made there
+    // comes back as a request. Returns the new value when the menu changed it, else null.
+    public static float? SyncIntoTurn(float current)
+    {
+        Find();
+        if (_intoTurn == null || _intoTurnSet == null) return null;
+        try
+        {
+            float want = (float)_intoTurnSet.GetValue(null);
+            if (want >= 0f) { _intoTurnSet.SetValue(null, -1f); _intoTurn.SetValue(null, want); return want; }
+            if ((float)_intoTurn.GetValue(null) != current) _intoTurn.SetValue(null, current);
+        }
+        catch { }
+        return null;
+    }
+
+    // Update notice (wheel mod 1.2.0+, link v4): hands our update check's result to the wheel mod, which shows
+    // one message for both mods. True = the wheel mod shows it (we show no message of our own).
+    public static bool ShareUpdate(UpdateCheck.Found newer, bool done, bool popup)
+    {
+        Find();
+        if (_wheelShows == null || _upChecked == null || _upLatest == null || _upPopup == null || _upDontShow == null) return false;
+        try
+        {
+            if (!(bool)_wheelShows.GetValue(null)) return false;
+            string state = $"{done}|{newer?.Latest}|{popup}";
+            if (state != _upShared)
+            {
+                if (newer != null)
+                {
+                    _upInstalled?.SetValue(null, newer.Installed);
+                    _upWhatsNew?.SetValue(null, newer.WhatsNew);
+                    _upUrl?.SetValue(null, newer.Url);
+                }
+                _upPopup.SetValue(null, popup);
+                _upLatest.SetValue(null, newer?.Latest);
+                _upChecked.SetValue(null, done);
+                _upShared = state;
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    // "Don't show this again" ticked in the wheel mod's message for this cockpit version (once, else null).
+    public static string TakeDontShow()
+    {
+        if (_upDontShow == null) return null;
+        try
+        {
+            var v = (string)_upDontShow.GetValue(null);
+            if (v != null) _upDontShow.SetValue(null, null);
+            return v;
+        }
+        catch { return null; }
+    }
+
+    // True once the wheel mod's link was looked for (found or not), so the cockpit knows whether to show its own message.
+    public static bool Searched => _active != null || _logged;
+
     static void Find()
     {
         if (_active != null || Time.unscaledTime < _nextSearch) return;
@@ -85,6 +147,18 @@ internal static class WheelLink
             _toggles = Field(t, "CockpitToggles", typeof(int));
             _cockpitActive = Field(t, "CockpitActive", typeof(bool));
             _cockpitInstalled = Field(t, "CockpitInstalled", typeof(bool));
+            // Version 3 and up: the cockpit's "look into turns" in the wheel mod's F3 menu (Camera page).
+            _intoTurn = Field(t, "CockpitIntoTurn", typeof(float));
+            _intoTurnSet = Field(t, "CockpitIntoTurnSet", typeof(float));
+            // Version 4 and up: one update message for both mods, shown by the wheel mod.
+            _wheelShows = Field(t, "WheelShowsUpdates", typeof(bool));
+            _upChecked = Field(t, "CockpitUpdateChecked", typeof(bool));
+            _upLatest = Field(t, "CockpitUpdateLatest", typeof(string));
+            _upInstalled = Field(t, "CockpitUpdateInstalled", typeof(string));
+            _upWhatsNew = Field(t, "CockpitUpdateWhatsNew", typeof(string));
+            _upUrl = Field(t, "CockpitUpdateUrl", typeof(string));
+            _upPopup = Field(t, "CockpitUpdatePopup", typeof(bool));
+            _upDontShow = Field(t, "CockpitUpdateDontShow", typeof(string));
             try { _cockpitInstalled?.SetValue(null, true); } catch { }
             var version = t.GetField("Version", Static);
             Plugin.Info($"wheel mod found ({asm.GetName().Name}, link v{version?.GetValue(null) ?? "?"}): cockpit wheel turns with the real one" +

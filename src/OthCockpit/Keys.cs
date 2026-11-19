@@ -16,7 +16,7 @@ internal static class Keys
     static readonly uint _pid = (uint)Process.GetCurrentProcess().Id;
     static readonly Dictionary<int, bool> _was = new();
 
-    public const int NumPad1 = 0x61, NumPad2 = 0x62, NumPad3 = 0x63, NumPad4 = 0x64, NumPad6 = 0x66,
+    public const int NumPad1 = 0x61, NumPad2 = 0x62, NumPad3 = 0x63, NumPad4 = 0x64, NumPad5 = 0x65, NumPad6 = 0x66,
                      NumPad7 = 0x67, NumPad8 = 0x68, NumPad9 = 0x69, Add = 0x6B, Subtract = 0x6D;
 
     public static bool GameHasFocus()
