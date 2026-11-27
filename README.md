@@ -2,7 +2,7 @@
 
 Sit **inside** your car in **over the hill** (Funselektor, Steam): a first-person view with a real interior in the game's low-poly style. Working dials (speed, revs, fuel, outside temperature), warning lights, a gear display, and a steering wheel, pedals and levers that move with your input. Painted parts take your car's livery, dust and mud. Every car in the game has a cockpit.
 
-Watch it in action: [mod spotlight video](https://youtu.be/rHvPhiTygKQ) and the [November update](https://youtu.be/gRxpiDNqJK0) (smart camera, wheel in the menus, mirrors). Download: [OTH Cockpit on Nexus Mods](https://www.nexusmods.com/overthehill/mods/90).
+Watch it in action: [mod spotlight video](https://youtu.be/rHvPhiTygKQ), the [November update](https://youtu.be/gRxpiDNqJK0) (mirrors) and the [0.4.5 update](https://youtu.be/-gDnfCh2F28) (cleaner cabs, clear rear windows). Download: [OTH Cockpit on Nexus Mods](https://www.nexusmods.com/overthehill/mods/90).
 
 Questions or problems? Ask in the [JonkoMonk Discord](https://discord.gg/h2hXcYgkpE) (#cockpit-help).
 
