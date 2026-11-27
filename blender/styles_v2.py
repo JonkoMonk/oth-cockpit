@@ -431,7 +431,15 @@ def pedals_levers(b):
                (L.dx + L.m(0.28), L.wc[1] - 0.02, L.wc[2] + 0.02), 0.014, 0.014, b.c["metal"])
         P.place(P.ball("column_shift_knob", 0.02, b.c["knob"]), (L.dx + L.m(0.28), L.wc[1] - 0.02, L.wc[2] + 0.02))
     if cfg.get("transfer", True):
-        k.lever("transfer_lever", (L.m(0.09), tunnel_top, lz - 0.08), 0.32, 15, 0.028, b.c["knob2"], drive="lowrange")
+        # Beside a console (floor + 0.42) a 32 cm lever's knob stayed down in its recess, 10 cm under the gear knob
+        # (Brick, drives of 19 and 22 Nov): 40 cm there.
+        # 0.4.5b2: still "into the centre console" (it stands 2 cm in front of it and leans back into it, drive 25 Nov):
+        # on a console car it stands on the console's top (floor + 0.42) instead, its knob 2-3 cm under the gear knob.
+        if "console" in cfg.get("features", ()):
+            k.lever("transfer_lever", (L.m(0.07), L.floor + 0.42, L.eye[2] + 0.12), 0.17, 15, 0.028, b.c["knob2"],
+                    drive="lowrange", boot=0.035)
+        else:
+            k.lever("transfer_lever", (L.m(0.09), tunnel_top, lz - 0.08), 0.32, 15, 0.028, b.c["knob2"], drive="lowrange")
     for i, (x, col) in enumerate(cfg.get("extra_levers", ())):   # decor levers (diff locks, PTO, range)
         k.lever(f"extra_lever{i}", (L.m(x), tunnel_top, lz - 0.12 - 0.03 * i), 0.28, 12, 0.024, b.c[col], boot=0.035,
                 shaft_r=0.009)
@@ -526,10 +534,16 @@ def seats(b):
     if cfg.get("rear_bench", True) and L.eye[2] - m["rear"] > 1.3:
         w = L.wall - 0.06
         rz = back_z - 0.55
+        # 0.4.5b2: the bench fits between the wheel-arch covers, as in a real car (it ran through them, so the covers
+        # stood up out of the cushion: "wheel wells through the back seat", Brick, Polyana, Grand Woodman, Boar 25 Nov).
+        for inner, za, zb, top in getattr(b, "arches", []):
+            if min(za, zb) < rz + 0.08 and max(za, zb) > rz - 0.56 and top > L.floor + 0.05 and inner - 0.01 < w:
+                print(f"rear bench: {2 * w:.2f} -> {2 * (inner - 0.01):.2f} m wide, between the wheel arches")
+                w = inner - 0.01
         P.prism("rear_bench_cushion", [(rz - 0.45, cushion - 0.14), (rz - 0.45, cushion - 0.04), (rz + 0.05, cushion - 0.02),
                                        (rz + 0.08, cushion - 0.14)], "x", -w, w, seat)
         P.prism("rear_bench_back", [(rz - 0.50, cushion - 0.06), (rz - 0.42, cushion - 0.04), (rz - 0.47, cushion + 0.48),
-                                    (rz - 0.56, cushion + 0.48)], "x", -w, w, seat)
+                                    (rz - 0.56, cushion + 0.48)], "x", -w + 0.005, w - 0.005, seat)   # (5 mm in: flush ends flickered, Lynx)
         P.box("rear_bench_frame", (-w, L.floor, rz - 0.42), (w, cushion - 0.14, rz + 0.04), dark)
 
 
@@ -570,16 +584,73 @@ def floor(b):
     k, L, cfg, m = b.k, b.L, b.cfg, b.m
     w = L.wall + 0.02
     uv = k.uv("floor (lower side)", (0, L.floor + 0.15, L.eye[2]), (-1, 0, 0))
-    P.box("floor", (-w, L.floor - 0.04, m["rear"]), (w, L.floor + 0.005, L.dash_front), k.paint, uv=uv)
+    # cfg floor_cover (sRGB): a rubber or carpet floor instead of the paint, for cars whose lower body is dark in
+    # most liveries; the painted floor read as black in the shade of the cab (0.4.5: Rust Ox, Timberbox, Lynx).
+    cover = M("floor_cover", cfg["floor_cover"]) if cfg.get("floor_cover") else None
+    if cover and cfg.get("cover_skins", True):   # the body's own faces down by the floor get it too (kit.inner_skins)
+        k.low_cover = (L.floor + 0.40, cover)
+    P.box("floor", (-w, L.floor - 0.04, m["rear"]), (w, L.floor + 0.005, L.dash_front), cover or k.paint,
+          uv=None if cover else uv)
     mat_ = b.c["carpet"] if cfg.get("carpet") else b.c["rubber"]
+    if cover and not cfg.get("carpet"):   # 0.4.5b2: mats a shade darker than the covering (the near-black rubber mats
+        # filled the footwells: "the floor is still Vantablack, like a black hole", Rust Ox, drive 25 Nov)
+        mat_ = M("floor_mat", tuple(c * 0.75 for c in cfg["floor_cover"]))
     mw = min(0.22, abs(L.dx) - 0.03)
     for i, x in enumerate((L.dx, -L.dx)):
         P.box(f"floor_mat{i}", (x - mw, L.floor + 0.005, L.eye[2] + 0.05), (x + mw, L.floor + 0.015, L.dash_front - 0.08), mat_)
     if cfg.get("tunnel", True):
         th = cfg.get("tunnel_h", 0.20)
         P.prism("tunnel", [(-0.17, L.floor + 0.005), (-0.11, L.floor + th), (0.11, L.floor + th), (0.17, L.floor + 0.005)],
-                "z", L.eye[2] - 0.45, L.dash_front - 0.02, mat_ if cfg.get("carpet") else k.paint,
-                uv=None if cfg.get("carpet") else uv)
+                "z", L.eye[2] - 0.45, L.dash_front - 0.02, mat_ if cfg.get("carpet") else (cover or k.paint),
+                uv=None if (cfg.get("carpet") or cover) else uv)
+
+
+def wheel_arches(b):
+    """0.4.5: covers over the rear wheels. The body is an outer shell, so where the game's tyres (separate parts)
+    reach into the cabin they showed through the floor and on the rear seats (Protector, Grand Woodman, Timberbox,
+    drive 22 Nov). wheels.json in the car's folder (tools/export_wheels.py: the rear wheel anchors and the tyre
+    radius from the game's car) places a rounded cover 5 cm round each rear tyre, from its inner face to the side
+    wall, wherever the tyre comes above the floor inside the cabin. cfg arch_covers=False: none."""
+    import json
+    import math
+    import os
+    k, L, cfg, m = b.k, b.L, b.cfg, b.m
+    path = os.path.join(k.folder, "wheels.json")
+    if cfg.get("arch_covers", True) is False or not os.path.exists(path):
+        return
+    with open(path) as f:
+        wd = json.load(f)
+    R = (wd.get("radius") or 0.40) + 0.05   # + suspension travel and clearance
+    W = min(wd.get("width") or 0.26, 0.30)  # (the exported width is the mesh's, often its diameter)
+    cover = M("floor_cover", cfg["floor_cover"]) if cfg.get("floor_cover") else None
+    # 0.4.5b2: without a floor covering, the side lining's colour and material (the paint spot low on the side was
+    # often a shaded one: black arches beside the bench, Roamer and Brick, self-check 25 Nov)
+    uv = None if cover else k.rear_wall_uv(m)
+    side_mat = k.rear_wall_mat()
+    made = []
+    for key, side in (("WheelRL", "L"), ("WheelRR", "R")):
+        if key not in wd.get("wheels", {}):
+            continue
+        x, y, z = wd["wheels"][key]
+        s = -1 if side == "L" else 1
+        ax = abs(x) if abs(x) < 1.5 else 0.75   # (a few cars' wheel parents are turned: their x comes out wrong)
+        inner = ax - W / 2 - 0.04
+        if inner >= L.wall or y + R < L.floor + 0.02 or z > L.eye[2] - 0.2:
+            continue
+        # The arch outline in (z, y): a half circle round the wheel, cut off at the floor.
+        pts = []
+        for i in range(25):
+            a = math.pi * i / 24
+            pts.append((z + R * math.cos(a), max(L.floor, y + R * math.sin(a))))
+        pts = [p for p in pts if p[1] > L.floor + 0.001]   # only the part over the floor
+        if len(pts) < 2:
+            continue
+        outline = [(pts[0][0], L.floor)] + pts + [(pts[-1][0], L.floor)]
+        x0, x1 = sorted((s * inner, s * (L.wall + 0.01)))
+        P.prism(f"wheel_arch_{side}", outline, "x", x0, x1, cover or side_mat, uv=uv)
+        b.arches = getattr(b, "arches", []) + [(inner, outline[0][0], outline[-1][0], max(p[1] for p in pts))]
+        made.append(f"{side} at z {z:.2f}, up to {y + R:.2f} (floor {L.floor:.2f}), from |x| {inner:.2f}")
+    print("wheel arches: " + ("; ".join(made) if made else "none needed"))
 
 
 def visors_mirror(b):
@@ -842,6 +913,9 @@ def build(k, cfg):
     # paint shows inside on most cars); cars_v2 turns it off where the renders looked worse (2026-11-08 check).
     k.fit_sides = bool(cfg.get("fit_sides", True))
     k.fit_roof = cfg.get("fit_roof")
+    k.rear_traced = cfg.get("rear_wall", "traced") != "flat"
+    k.roof_edge_short = cfg.get("roof_edge_short", True)
+    k.rear_tuck = cfg.get("rear_tuck", True)   # 0.4.5b3: rear wall edges tucked behind the side lining
     door_win =max(m["windows"], key=lambda w_: w_[1]) if m["windows"] else (ez_ - 0.5, ez_ + 0.3)
     k.section_z = (door_win[0] + 0.05, min(door_win[1], ws["base_z"] - 0.05) - 0.05)
     print(f"v2 cabin: half width {half:.3f}, belt {m['belt']:.3f}, window top {m['win_top']:.3f}, windows {len(m['windows'])}")
@@ -879,6 +953,7 @@ def build(k, cfg):
     wheel(b)
     pedals_levers(b)
     floor(b)
+    wheel_arches(b)
     seats(b)
     doors(b)
     visors_mirror(b)

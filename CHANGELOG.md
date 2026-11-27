@@ -10,6 +10,41 @@ PATCH for fixes only. 1.0.0 when every car is finished and it leaves alpha.
 - 0.5.0: customise the interior
 - 1.0.0: out of alpha
 
+## 0.4.5-alpha (2026-11-27)
+
+A clean-up round for the inside of the cabs: the back, the pillars and a few cars that had something odd going on.
+
+- The back of the cab: rear windows you see from outside are now windows from the inside too. The back wall now
+  follows the body, so tailgate, rear-door and cab-back windows are clear (Grand Woodman, Woodman, Boar, Marshal,
+  Timberbox, Cumbre and more), and you can't look out through the tail lights any more.
+- No more black patches at the back. The game's own shading made some panels pitch black (Cumbre, Boar, Lynx,
+  TrailRat, Polyana, Burro). The back wall is now one colour, the same as the side panels, instead of a beige board.
+- Back pillars are a lot smoother in most cars (Brick, Lynx, Wombat and others). The Polyana isn't there yet, see
+  below.
+- A pillars: the top meets the roof without wedges or light slivers, and both sides are the same colour. The
+  Roamer's light-blue slab across the corner of the windscreen is gone.
+- Wheels stay outside: the rear wheels no longer poke through the floor or the back (Protector, Grand Woodman,
+  Timberbox). The back seat fits between the wheel arches now.
+- Tinny: you can see out of the windscreen again (it was dark).
+- Brick and Roamer: the range (L/H) lever stands on the console instead of sinking into it.
+- Polyana: the extra lever by the passenger's feet now stands with the others on the tunnel.
+- Lynx: the red post on the passenger floor is gone, and you sit a little lower.
+- Darker cabs look right: the Timberbox has a dark grey dash and brown carpet instead of black, the Rust Ox a lighter
+  grey floor with darker mats, and the Mammoth an olive-grey rubber floor.
+- TrailRat: the black patch behind the right rear seat is gone.
+- Less flicker on the Lynx back seat and the Mammoth floor.
+
+**Known issues** (next update, 0.4.6):
+- Polyana: the back pillars are still jagged.
+- Boar: the edge around the rear window is rough.
+- Some other cars still have small nicks or steps on the back pillars (Cumbre, Timberbox, Roamer, a few spots on
+  the Brick).
+- In some cars you can see the game's grass through the floor while driving (worst in the Grand Woodman, Timberbox
+  and Rust Ox).
+- Blast Wagon: the wipers only half show (same as in 0.4.4).
+- Marshal: the floor has steps in it. DingDing: one back window inside where the outside has four. Polyana: the
+  roll cage touches the A pillars.
+
 ## 0.4.4-alpha (2026-11-19)
 
 - You can see the road better in two cars (thanks to the players on Nexus and YouTube who told us the dash was in

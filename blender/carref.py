@@ -38,6 +38,19 @@ class PaintSampler:
         self.skin = bpy.data.images.load(os.path.join(folder, f"{car}_skin00.png"))
         self.mask_px = list(self.mask.pixels)
         self.skin_px = list(self.skin.pixels)
+        # The car's baked shading (_AO_Texture, tools/export_ao.py): in game our paint parts get it too, at their UV.
+        # A spot that is dark there (the outside of a pickup's cab back, facing the bed) made a whole part pitch
+        # black in game (0.4.5: Cumbre back wall), while the previews without it looked fine.
+        ao = os.path.join(folder, f"{car}_AO.png")
+        self.ao = bpy.data.images.load(ao) if os.path.exists(ao) else None
+        self.ao_px = list(self.ao.pixels) if self.ao else None
+
+    # Below this (0..1) a paint spot counts as shaded: parts don't take their colour from it.
+    AO_MIN = 0.6
+
+    def shade(self, uv):
+        """The baked shading at a paint UV, 0 (black) .. 1 (none); 1 when the car's AO picture is missing."""
+        return self._px(self.ao, self.ao_px, uv)[0] if self.ao else 1.0
 
     def _px(self, img, px, uv):
         w, h = img.size
@@ -77,8 +90,12 @@ class PaintSampler:
         v = sum(w * self.uv[li].uv[1] for w, li in zip(weights, poly.loop_indices))
         m = self._px(self.mask, self.mask_px, (u, v))
         ok = m[2] > 0.8 and m[0] < 0.2 and m[1] < 0.2   # blue in the mask = paint
-        print(f"paint uv {label}: ({u:.3f}, {v:.3f}) skin00 {self._px(self.skin, self.skin_px, (u, v))} mask {m}"
-              f"{'' if ok else ' -> not paint, fallback'}")
+        sh = self.shade((u, v))
+        why = "" if ok else " -> not paint, fallback"
+        if ok and sh < self.AO_MIN:
+            ok, why = False, " -> shaded, fallback"
+        print(f"paint uv {label}: ({u:.3f}, {v:.3f}) skin00 {self._px(self.skin, self.skin_px, (u, v))} mask {m} "
+              f"shade {sh:.2f}{why}")
         return (u, v) if ok else fallback
 
 

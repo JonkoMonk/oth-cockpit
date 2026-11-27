@@ -41,7 +41,7 @@ if "--nofit" not in args:
         fit_v2.nudge(L.eye, {k.body.name}, reach=cfg.get("nudge_reach", 0.03))
 fit_v2.report(L.eye, {k.body.name})
 if cfg.get("pillar_trim", True):
-    k.pillar_trims(L.eye, shift=cfg.get("trim_shift", 0.0))
+    k.pillar_trims(L.eye, shift=cfg.get("trim_shift", 0.0), cap=cfg.get("trim_cap", True))
 if cfg.get("seat_belt", True):
     k.seat_belt(L.eye)
 k.inner_skins(L.eye, open_boxes=cfg.get("skin_open", ()))

@@ -61,6 +61,10 @@ class C:
         return min(self.top - r - 0.01, self.L.sight_y(z) + r + 0.015)
 
     def paint(self):
+        # cfg dash_paint (sRGB): the painted dash in a fixed colour instead of the bonnet's, where the bonnet is black
+        # in most liveries ("Vantablack": Timberbox, 0.4.5)
+        if self.b.cfg.get("dash_paint"):
+            return M("dash_paint", self.b.cfg["dash_paint"], rough=0.6), None
         return self.k.paint, self.b.dash_uv()
 
 

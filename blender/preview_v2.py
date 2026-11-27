@@ -53,6 +53,17 @@ def _paint_textures(k, cars_folder):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = skin
     nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+    ao_path = os.path.join(cars_folder, f"{k.car}_AO.png")
+    if os.path.exists(ao_path):   # the car's baked shading, as the game puts it on our paint parts too (0.4.5)
+        ao = nt.nodes.new("ShaderNodeTexImage")
+        ao.image = bpy.data.images.load(ao_path)
+        ao.image.colorspace_settings.name = "Non-Color"
+        mul = nt.nodes.new("ShaderNodeMix")
+        mul.data_type, mul.blend_type = "RGBA", "MULTIPLY"
+        mul.inputs["Factor"].default_value = 1.0
+        nt.links.new(tex.outputs["Color"], mul.inputs[6])
+        nt.links.new(ao.outputs["Color"], mul.inputs[7])
+        nt.links.new(mul.outputs[2], nt.nodes["Principled BSDF"].inputs["Base Color"])
     nt.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.85
     # The body: single-sided from inside and see-through glass, like the game.
     bnt = k.body.data.materials[0].node_tree

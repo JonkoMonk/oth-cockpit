@@ -287,25 +287,28 @@ class Kit:
             m["rear_glass"] = None
         # This car's own plain paint spot (lower front door), for parts whose own ray finds no paint.
         p, uv, kind = S.hit((-0.2, (m["floor"] + m["belt"]) / 2 + 0.1, ez), (-1, 0, 0))
-        if kind == "paint":
+        if kind == "paint" and S.shade(uv) >= S.AO_MIN:
             self.fallback_uv = uv
         print("measured:", {k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items() if k != "ws"},
               {k: round(v, 3) for k, v in m["ws"].items()})
         return m
 
-    def surface(self, name, us, vs, origin, direction, mat=None, inset=0.015, solid_kinds=("paint", "trim")):
+    def surface(self, name, us, vs, origin, direction, mat=None, inset=0.015, solid_kinds=("paint", "trim"), one_uv=None,
+                tags=None):
         """A lining surface that follows the body: rays from origin(u, v) along direction on the grid us x vs.
         Every spot that isn't glass (or a light) gets covered, the window edges traced by bisection so they
         aren't stair-stepped. With mat=None the paint material is used and every corner takes the UV of
         its own outside spot, so the livery (stripes too) shows inside; faces across a seam of the paint
-        layout take one UV. The faces look back towards the ray origins."""
+        layout take one UV. The faces look back towards the ray origins. tags (a list): filled with one word per
+        vertex, "glass" for a point on a window's edge, else "free" (tuck_rear_wall may move those)."""
         S = self.sampler
         d = Vector(direction).normalized()
-        hits = {}
+        hits, kinds = {}, {}
         for i, u in enumerate(us):
             for j, v in enumerate(vs):
                 p, uv, kind = S.hit(origin(u, v), direction)
                 hits[(i, j)] = (p, uv) if p is not None and kind in solid_kinds else None
+                kinds[(i, j)] = kind
 
         def edge_point(a, b):
             """Solid grid point a next to non-solid b: walk to the boundary between them."""
@@ -323,6 +326,7 @@ class Kit:
             return best
 
         verts, faces, uvs = [], [], []
+        shaded = 0
         for i in range(len(us) - 1):
             for j in range(len(vs) - 1):
                 corners = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
@@ -332,12 +336,12 @@ class Kit:
                 pts = []
                 for k, c in enumerate(corners):
                     if solid[k]:
-                        pts.append(hits[c])
+                        pts.append(hits[c] + ("free",))
                     else:
                         # Replace a missing corner by the boundary points towards its solid neighbours.
                         for nb in (corners[k - 1], corners[(k + 1) % 4]):
                             if hits[nb] is not None:
-                                pts.append(edge_point(nb, c))
+                                pts.append(edge_point(nb, c) + ("glass" if kinds[c] == "glass" else "free",))
                 if len(pts) < 3:
                     continue
                 # Clean ring: drop repeats, keep order.
@@ -350,19 +354,32 @@ class Kit:
                 if len(ring) < 3:
                     continue
                 spread = max((Vector(a[1]) - Vector(b[1])).length for a in ring for b in ring)
-                if mat is None and spread > 0.04:
+                if mat is None and any(S.shade(r[1]) < S.AO_MIN for r in ring):
+                    # a spot the car's baked shading makes dark (in game it would be nearly black): plain body colour
+                    face_uvs = [getattr(self, "fallback_uv", P.PAINT_UV)] * len(ring)
+                    shaded += 1
+                elif mat is None and spread > 0.04:
                     cu, cv = sum(us[c[0]] for c in corners) / 4, sum(vs[c[1]] for c in corners) / 4
                     _, cuv, _ = S.hit(origin(cu, cv), direction)
                     face_uvs = [cuv or ring[0][1]] * len(ring)
                 else:
                     face_uvs = [r[1] for r in ring]
                 base = len(verts)
-                for (p, _), fuv in zip(ring, face_uvs):
+                for (p, _, tg), fuv in zip(ring, face_uvs):
                     verts.append(tuple(p - d * inset))
                     uvs.append(fuv)
+                    if tags is not None:
+                        tags.append(tg)
                 faces.append(tuple(range(base, base + len(ring))))
         if not faces:
             return None
+        if one_uv is not None:   # one colour all over (the rear wall: the side panels' colour)
+            uvs = [one_uv] * len(uvs)
+        elif shaded > 0.2 * len(faces):   # mostly shaded: all of it one colour (mixed, it read as a patchwork)
+            uvs = [getattr(self, "fallback_uv", P.PAINT_UV)] * len(uvs)
+            print(f"{name}: {shaded} of {len(faces)} faces over shaded body spots: all in the plain body colour")
+        elif shaded:
+            print(f"{name}: {shaded} of {len(faces)} faces over shaded body spots take the plain body colour")
         return P.mesh_object(name, verts, faces, mat or self.paint, uvs=uvs, closed=False, facing=tuple(-d))
 
     def auto_lining(self, m, liner, eye, front_z=None, side_from=0.25, step=0.04):
@@ -426,6 +443,9 @@ class Kit:
     # The roof lining alone (headliner following the roof, roof edges 1.5 cm short of it); None = same as fit_sides.
     # Rust Ox 0.4.4: fitted roof but straight side panels (bent ones stepped through its cab's door cards).
     fit_roof = None
+    # 0.4.5: rear wall traced along the body with every window open (False: the old flat board, one window).
+    rear_traced = True
+    roof_edge_short = True
 
     def roof_fitted(self):
         return self.fit_sides if self.fit_roof is None else self.fit_roof
@@ -746,8 +766,20 @@ class Kit:
             if roof - top > 0.03:
                 # Bent to the body (fitted_panel), its top edge would lie on a curved roof's inside, on the
                 # copy inner_skins puts there (flicker): stop 1.5 cm short, the headliner follows the roof down.
+                # 0.4.5: its front ends at the windscreen's top edge. Up there the A pillar leans far back, and run
+                # on to the door window's front the panel stuck out past the pillar into the windscreen's corner:
+                # a slab across it (Roamer) or slivers beside the pillar trim (Woodman, Trail Burner, drive 22 Nov).
+                re_front = min(front, ws["top_z"] - 0.03) if self.roof_edge_short else front
+                # (where the windscreen wraps round, its corner up there is further back still: the glass there; the
+                # panel's lower front corner sits out at the side wall, beside the pillar, so 6.5 cm behind the glass)
+                # cfg roof_edge_short=False: as in 0.4.4 (on the Bull its pillar trim ends low and the panel covered
+                # the rest of the pillar: "the right A pillar goes halfway", drive 25 Nov)
+                for yy in ((top + 0.02, (top + roof) / 2) if self.roof_edge_short else ()):
+                    p_, _, kind_ = self.sampler.hit((s * (ws["half_w"] - 0.03), yy, ws["top_z"] - 0.6), (0, 0, 1), 1.2)
+                    if p_ is not None and kind_ == "glass":
+                        re_front = min(re_front, p_.z - 0.065)
                 self.side_panel(f"roof_edge_{side}", top, roof - (0.015 if self.roof_fitted() else 0.0),
-                                rear, front, s)
+                                rear, re_front, s)
             # A pillar along the windscreen edge.
             if "a_pillars" not in skip:
                 x = s * (ws["half_w"] + 0.045)
@@ -783,19 +815,305 @@ class Kit:
                 P.box("headliner", (-hw + 0.01, roof - 0.03, rear + 0.01), (hw - 0.01, roof - 0.005, ws["top_z"] - 0.13), liner)
             else:
                 self.headliner(hw, roof, rear + 0.01, ws["top_z"] - 0.13, liner)
-        if "rear_wall" not in skip:
+        if "rear_wall" not in skip and self.rear_traced:
+            # 0.4.5: the rear wall follows the body (rays back from inside the cabin) and stays open wherever the
+            # body is glass, so every rear and rear-door window stays a window. The flat board below had room for
+            # one window only (the biggest), and a leaning tailgate's glass was missed: "can't see out the back"
+            # on the Grand Woodman, Woodman, Boar, Marshal and Timberbox (all-cars drive 22 Nov).
             rw = self.wall(floor + 0.1, roof - 0.1, rear + 0.05, rear + 0.2)
-            uv = self.uv("rear wall", (0, (floor + roof) / 2, rear + 0.5), (0, 0, -1))
+
+            def rng(a, b, st):
+                n = max(2, int(round((b - a) / st)) + 1)
+                return [a + (b - a) * i / (n - 1) for i in range(n)]
+            S = self.sampler
+
+            # Rays start up to 90 cm in front of the back (0.45 left the corners under a sloping roof open: Boar), but
+            # never ahead of the front door window's back edge (a short pickup cab: Cumbre).
+            door_ = max(m["windows"], key=lambda w: w[1]) if m["windows"] else (rear + 0.5,)
+            reach_ = min(0.90, max(0.45, door_[0] - rear - 0.05))
+
+            def origin(x, y):
+                return (x, y, rear + reach_)
+            # Only the body's back counts (a ray that meets a side wall or the roof first is left open: the side
+            # lining and headliner cover those).
+            orig_hit = S.hit
+
+            def back_hit(o, d, max_dist=10.0):
+                p, uv, kind = orig_hit(o, d, max_dist)
+                if p is not None:
+                    _, n_, _, _ = S.bvh.ray_cast(carref.U2B3 @ Vector(o), (carref.U2B3 @ Vector(d)).normalized(), max_dist)
+                    ng_ = (carref.U2B3.inverted() @ n_).normalized() if n_ is not None else None
+                    if ng_ is not None and abs(ng_[2]) < 0.3:
+                        return None, None, None   # a flat roof or floor (the headliner is there: it flickered, DingDing)
+                if p is not None and p.z > rear + reach_ - 0.05:
+                    return None, None, None
+                return p, uv, kind
+            # 0.4.5b2: one colour, the rear side panels' (the body's back is often another livery colour, or the
+            # light unpainted part of the paint layout: a beige "trunk panel" in 8 cars, drive 25 Nov).
+            wall_uv = self.rear_wall_uv(m)
+            S.hit = back_hit
+            try:
+                # (tail lights count as wall: left open, you saw out through them, Timberbox "I can see out of the trunk")
+                tags = []
+                ob = self.surface("rear_wall", rng(-rw + 0.005, rw - 0.005, 0.03), rng(floor + 0.01, roof - 0.02, 0.03),
+                                  origin, (0, 0, -1), mat=self.rear_wall_mat(), inset=0.018, one_uv=wall_uv,
+                                  solid_kinds=("paint", "trim", "light"), tags=tags)   # (1.2 cm lay on the headliner under a sloping roof: Boar)
+            finally:
+                S.hit = orig_hit
+            if ob is not None and self.rear_tuck:
+                self.tuck_rear_wall(ob, tags, rear)
+            print(f"rear wall: traced along the body's back ({len(ob.data.polygons) if ob else 0} faces), windows left open")
+        elif "rear_wall" not in skip:
+            rw = self.wall(floor + 0.1, roof - 0.1, rear + 0.05, rear + 0.2)
+            uv = self.rear_wall_uv(m)   # 0.4.5b2: the side panels' colour (was the body's back: beige, Blast Wagon)
+            wm = self.rear_wall_mat()
             z0, z1 = rear - 0.04, rear - 0.005
             g = m["rear_glass"]
             if g:
                 gx0, gx1, gy0, gy1 = g[0] - 0.02, g[1] + 0.02, g[2] - 0.02, g[3] + 0.02
-                P.box("rear_wall_low", (-rw, floor, z0), (rw, gy0, z1), self.paint, uv=uv)
-                P.box("rear_wall_top", (-rw, gy1, z0), (rw, roof, z1), self.paint, uv=uv)
-                P.box("rear_wall_L", (-rw, gy0, z0), (gx0, gy1, z1), self.paint, uv=uv)
-                P.box("rear_wall_R", (gx1, gy0, z0), (rw, gy1, z1), self.paint, uv=uv)
+                P.box("rear_wall_low", (-rw, floor, z0), (rw, gy0, z1), wm, uv=uv)
+                P.box("rear_wall_top", (-rw, gy1, z0), (rw, roof, z1), wm, uv=uv)
+                P.box("rear_wall_L", (-rw, gy0, z0), (gx0, gy1, z1), wm, uv=uv)
+                P.box("rear_wall_R", (gx1, gy0, z0), (rw, gy1, z1), wm, uv=uv)
             else:
-                P.box("rear_wall", (-rw, floor, z0), (rw, roof, z1), self.paint, uv=uv)
+                P.box("rear_wall", (-rw, floor, z0), (rw, roof, z1), wm, uv=uv)
+
+    # 0.4.5b3: the traced rear wall's edges tucked in behind the side lining (tuck_rear_wall); cfg rear_tuck=False: off.
+    rear_tuck = True
+
+    def window_edge_strips(self, rear, reach=0.12, step=0.02):
+        """0.4.5b3: the rear corner pillar's lining ends at the side window's measured box, but the glass starts a
+        little further on (a rounded window corner most of all). That strip of window frame was only covered by the
+        rear wall's edge sticking out into the cabin. Now a thin strip lies flat on the frame (6 mm off the body,
+        under the pillar lining where they overlap) from under the pillar's end up to the glass, so the wall's edge
+        can tuck in behind it (tuck_rear_wall) without opening the frame."""
+        S = self.sampler
+        made = 0
+        for p in getattr(self, "pillars", []):
+            if abs(p["z0"] - rear) > 0.02:
+                continue   # only the rearmost pillar on each side (from the back to the first side window)
+            src = bpy.data.objects.get(p["name"])
+            if src is None:
+                continue
+            s, z1 = p["s"], p["z1"]
+            n = max(2, int(math.ceil((p["y1"] - p["y0"]) / step)) + 1)
+            rows = []
+            for i in range(n):
+                y = p["y0"] + (p["y1"] - p["y0"]) * i / (n - 1)
+                hit_at = lambda z: S.hit((s * 0.25, y, z), (s, 0, 0))
+                zg = None
+                z = z1 - 0.01
+                while z < z1 + reach:
+                    pb, _, kd = hit_at(z)
+                    if pb is not None and kd == "glass":
+                        lo, hi = z - 0.005, z
+                        for _ in range(5):
+                            mid = (lo + hi) / 2
+                            pm, _, km = hit_at(mid)
+                            if pm is not None and km == "glass":
+                                hi = mid
+                            else:
+                                lo = mid
+                        zg = lo
+                        break
+                    z += 0.005
+                if zg is None or zg <= z1:
+                    rows.append(None)
+                    continue
+                pts = []
+                for z in (z1 - 0.02, (z1 + zg) / 2, zg):
+                    pb, _, _ = hit_at(z)
+                    if pb is None:
+                        break
+                    pts.append((s * (abs(pb.x) - 0.006), y, z))
+                rows.append(pts if len(pts) == 3 else None)
+            verts, faces = [], []
+            for a, b in zip(rows, rows[1:]):
+                if a is None or b is None:
+                    continue
+                base = len(verts)
+                verts += a + b
+                for k in range(2):
+                    faces.append((base + k, base + k + 1, base + 4 + k, base + 3 + k))
+            if not faces:
+                continue
+            uv = tuple(src.data.uv_layers[0].data[0].uv) if src.data.uv_layers else None
+            P.mesh_object(f"window_edge_{'L' if s < 0 else 'R'}", verts, faces, src.data.materials[0], uv=uv,
+                          closed=False, facing=(-s, 0, 0))
+            made += len(faces)
+        if made:
+            print(f"window edge strips: {made} faces on the frame between the rear pillars and the glass")
+
+    def tuck_rear_wall(self, ob, tags, rear, near=0.05, behind=0.007, reach=0.10):
+        """0.4.5b3: at a rounded rear corner the traced rear wall's edge runs forward along the side as a thin strip
+        (the last rays still meet the corner, 10-25 cm ahead of the back) and crossed the pillar / quarter lining
+        at a shallow angle: a saw-tooth edge down the rear pillars, on the Brick even sticking out past the pillar
+        into the side window ("the back pillars look glitchy", Brick and Polyana, 26 Nov). Skipping those faces
+        opened see-through slits (TrailRat, 0.4.5b2), so nothing is removed: every wall point up to `near` in front of
+        the side lining (and the window_edge_strips laid first) moves sideways to just behind the lining's face
+        (`behind`, never closer than 3 mm to the body); a point beside a window, ahead of where the lining ends, first
+        moves back to the lining's end over glass only (up to `reach`), or lies flat on the frame. Points on a window's
+        edge, and the faces they belong to, stay put (moving them opened the window wider or dragged a face across
+        the glass). Checked on all 23 cars: no new see-through spots; the Boar keeps it off (cfg rear_tuck=False)."""
+        import re
+        S = self.sampler
+        U = carref.U2B3
+        Ui = U.inverted()
+        self.window_edge_strips(rear)
+        lin = {s_: [o for o in bpy.data.objects if o.type == "MESH"
+                    and re.match(r"^(door|quarter|pillar\d+|roof_edge|window_edge)_" + s_ + "$", o.name)] for s_ in "LR"}
+
+        def face_x(y, z, s):
+            """|x| of the side lining's inner face at (y, z) on side s, or None where there is no lining."""
+            best = None
+            for o in lin["L" if s < 0 else "R"]:
+                mi = o.matrix_world.inverted()
+                ok, loc, _, _ = o.ray_cast(mi @ (U @ Vector((0.0, y, z))), (mi.to_3x3() @ (U @ Vector((s, 0, 0)))).normalized())
+                if ok:
+                    x = abs((Ui @ (o.matrix_world @ loc)).x)
+                    best = x if best is None else min(best, x)
+            return best
+
+        me = ob.data
+        # Faces with a corner on a window's edge stay as they are: moved out, a point beside the window dragged its
+        # face across the glass (a dark wedge in the Boar's rear side windows).
+        key = lambda co: (round(co.x, 4), round(co.y, 4), round(co.z, 4))
+        frozen = set()
+        for poly in me.polygons:
+            if any(tags[i] == "glass" for i in poly.vertices):
+                frozen.update(key(me.vertices[i].co) for i in poly.vertices)
+        tags = ["glass" if key(v.co) in frozen else t for v, t in zip(me.vertices, tags)]
+        moved = pulled = 0
+        for vtx, tg in zip(me.vertices, tags):
+            if tg == "glass":
+                continue
+            g = Ui @ vtx.co
+            if abs(g.x) < 0.25:
+                continue
+            s = 1 if g.x > 0 else -1
+            y, z = g.y, g.z
+            f = face_x(y, z, s)
+            if f is None:   # ahead of the lining's end (beside a window): onto the body's window frame there
+                zz, frame = z, None
+                while zz > z - reach and zz > rear:
+                    pb, _, kd = S.hit((s * (abs(g.x) - 0.06), y, zz), (s, 0, 0))   # (from near by: the body has inner parts)
+                    f = face_x(y, zz, s)
+                    if f is not None or (pb is not None and kd != "glass"):
+                        frame = None if f is not None else abs(pb.x) - 0.004
+                        break
+                    zz -= 0.005
+                if frame is not None:   # flat on the frame (it covers it: pulled back to the lining, the frame showed)
+                    if abs(g.x) < frame - near or (abs(g.x) >= frame and zz == z):
+                        continue
+                    pulled += zz != z
+                    moved += 1
+                    vtx.co = U @ Vector((s * max(frame, abs(g.x)), y, zz))
+                    continue
+                if f is None or abs(g.x) < f - near:
+                    continue
+                z = zz - 0.003 if zz != z else z
+                f = face_x(y, z, s) or f
+            if abs(g.x) < f - near or (abs(g.x) >= f + behind and z == g.z):
+                continue
+            target = f + behind
+            pb, _, _ = S.hit((s * (f - 0.01), y, z), (s, 0, 0))   # the skin outside the lining
+            if pb is not None and abs(pb.x) > f:
+                target = min(target, abs(pb.x) - 0.003)
+            if target < f + 0.005:
+                continue   # no room behind the lining (closer, it flickered against it: Wombat pillar1_R)
+            target = max(target, abs(g.x)) if z == g.z else target
+            if target <= abs(g.x) and z == g.z:
+                continue
+            pulled += z != g.z
+            moved += 1
+            vtx.co = U @ Vector((s * target, y, z))
+        # Second pass, along the lining's own surface: at a big rounded corner (the Polyana's C pillar) the bent side
+        # lining and the wall both follow the curve about 1 cm apart and wove through each other. Any wall point up
+        # to `cp_near` in front of a lining's inner face (side, roof edge or headliner) goes to `behind` under it.
+        cp_near = 0.03
+        cp_obs = [(o, -1 if o.name.endswith("_L") else 1 if o.name.endswith("_R") else 0)
+                  for o in lin["L"] + lin["R"] + [bpy.data.objects.get("headliner")] if o is not None] if cp_near > 0 else []
+        tucked = 0
+        for vtx, tg in zip(me.vertices, tags):
+            if tg == "glass":
+                continue
+            g = Ui @ vtx.co
+            best = None
+            for o, s in cp_obs:
+                if s and g.x * s < 0.2:
+                    continue
+                mi = o.matrix_world.inverted()
+                ok, loc, nrm, _ = o.closest_point_on_mesh(mi @ vtx.co, distance=cp_near)
+                if not ok:
+                    continue
+                cp = Ui @ (o.matrix_world @ loc)
+                n = (Ui @ (o.matrix_world.to_3x3().inverted().transposed() @ nrm)).normalized()
+                inward = (-s * n.x if s else 0.0, -n.y)
+                if max(inward) < 0.3:
+                    continue   # an end or the outer side, not the face towards the cabin
+                ahead = (g - cp).dot(n)
+                if ahead < -behind + 1e-4 or (g - cp).length > cp_near:
+                    continue
+                if ((g - cp) - n * ahead).length > 0.002:
+                    continue   # beside the lining's edge, not over its face: moving it would pull the wall open
+                if best is None or (g - cp).length < best[0]:
+                    best = ((g - cp).length, cp, n)
+            if best is None:
+                continue
+            _, cp, n = best
+            dep = 0.004   # (7 mm lay on the back of the TrailRat's headliner: flicker)
+            pb, _, _ = S.hit(tuple(cp + n * 0.003), tuple(-n), 0.05)   # the skin behind the lining
+            if pb is not None:
+                dep = min(dep, (pb - cp).length - 0.003)
+            if dep < 0.003:
+                continue   # no room under the lining: closer, it flickered against it
+            vtx.co = U @ (cp - n * dep)
+            tucked += 1
+        if cp_obs:
+            print(f"rear wall: {tucked} points tucked under a lining face")
+        me.update()
+        # Faces squeezed to a line (zero area) cover nothing, but the flicker check read one as lying on the pillar
+        # (Wombat): drop them.
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        flat = [f for f in bm.faces if f.calc_area() < 1e-7]
+        if flat:
+            bmesh.ops.delete(bm, geom=flat, context="FACES")
+            bm.to_mesh(me)
+            print(f"rear wall: {len(flat)} zero-size faces dropped")
+        bm.free()
+        me.update()
+        print(f"rear wall: {moved} edge points tucked behind the side lining ({pulled} moved back from beside a window)")
+
+    def rear_wall_uv(self, m):
+        """The rear wall's one colour: the rear side panel below the windows (as the quarter lining beside it).
+        Where that lining was built already, exactly its colour (its first UV); see rear_wall_mat for its material."""
+        for nm in ("quarter_L", "quarter_R", "door_L", "door_R"):
+            ob = bpy.data.objects.get(nm)
+            if ob is not None and ob.data.uv_layers and ob.data.materials and ob.data.materials[0] == self.paint:
+                print(f"rear wall colour: {nm}'s")
+                return tuple(ob.data.uv_layers[0].data[0].uv)
+        S = self.sampler
+        best = None
+        for y in ((m["floor"] + m["belt"]) / 2, (m["floor"] + m["belt"]) / 2 + 0.1):
+            for z in (m["rear"] + 0.25, m["rear"] + 0.45, m["rear"] + 0.7):
+                for sx in (-1, 1):
+                    p, uv, kind = S.hit((sx * 0.2, y, z), (sx, 0, 0))
+                    if kind == "paint" and S.shade(uv) >= S.AO_MIN and (best is None or S.shade(uv) > best[0]):
+                        best = (S.shade(uv), uv)   # the least shaded spot: as light as the lining beside it
+        if best:
+            print(f"rear wall colour: the rear side panel's (shade {best[0]:.2f})")
+            return best[1]
+        return getattr(self, "fallback_uv", P.PAINT_UV)
+
+    def rear_wall_mat(self):
+        """The side lining's material when a car lines its sides in something else than the paint (vinyl: Rust Ox)."""
+        for nm in ("quarter_L", "quarter_R", "door_L", "door_R"):
+            ob = bpy.data.objects.get(nm)
+            if ob is not None and ob.data.materials:
+                return ob.data.materials[0]
+        return self.paint
 
     def body_bits(self, m):
         """Small body parts just outside the windscreen (wipers at the bottom or hanging from the top,
@@ -893,11 +1211,29 @@ class Kit:
                         stack.append(o)
             if 3 <= len(isl) <= 8:
                 pieces.append(isl)
-        boxes = []
+        # A wiper is painted or trim, never glass: the Tinny's windscreen panes are loose 4-corner pieces too, and
+        # copied facing in, the game drew them as dark glass from the seat (0.4.5: "I cannot see out the front window").
+        from mathutils.interpolate import poly_3d_calc
+        S = self.sampler
+
+        def glassy(isl):
+            vset = {v.index for v in isl}
+            for f in {f for v in isl for f in v.link_faces if all(w.index in vset for w in f.verts)}:
+                poly = S.me.polygons[f.index]   # (same mesh: face and loop order as the sampler's)
+                w = poly_3d_calc([S.me.vertices[v].co for v in poly.vertices], poly.center)
+                uv = (sum(a * S.uv[li].uv[0] for a, li in zip(w, poly.loop_indices)),
+                      sum(a * S.uv[li].uv[1] for a, li in zip(w, poly.loop_indices)))
+                if S._px(S.mask, S.mask_px, uv)[1] > 0.5:
+                    return True
+            return False
+        boxes, skipped = [], 0
         for isl in pieces:
             pts = [B2U @ v.co for v in isl]
             lo = Vector([min(p[i] for p in pts) for i in range(3)])
             hi = Vector([max(p[i] for p in pts) for i in range(3)])
+            if glassy(isl):
+                skipped += 1
+                continue
             c = (lo + hi) / 2
             if not (ws["base_y"] - 0.10 < c.y < ws["top_y"] + 0.05 and abs(c.x) < ws["half_w"] + 0.08):
                 continue
@@ -933,7 +1269,7 @@ class Kit:
         bm.free()
         if faces:
             P.mesh_object("wiper_copies", verts, faces, self.paint, uvs=uvs, closed=False)
-        print(f"wiper copies: {npieces} panels")
+        print(f"wiper copies: {npieces} panels" + (f" ({skipped} loose glass pieces left alone)" if skipped else ""))
         return npieces
 
     def frame_covers(self, eye, min_x=0.5):
@@ -1040,7 +1376,7 @@ class Kit:
         print(f"frame covers: {len(faces)} body trim faces covered")
         return len(faces)
 
-    def pillar_trims(self, eye, min_w=0.07, overlap=0.012, overlap_out=0.025, depth=0.035, lift=0.015, shift=0.0):
+    def pillar_trims(self, eye, min_w=0.07, overlap=0.012, overlap_out=0.025, depth=0.035, lift=0.015, shift=0.0, cap=True):
         """Solid trim over both A pillars. The inner skins copy the body's own pillar, but on many cars that is
         a thin flat strip seen from the seat ("a line with no body to it"). Rows of rays from the eye, one per
         degree of pitch, sweep sideways from the windscreen: glass, then the pillar (paint/trim), then the side
@@ -1076,7 +1412,7 @@ class Kit:
                 if h[0] is not None:
                     best = min(best if best is not None else most, h[3] + 0.02)
             return none if best is None else best
-        made = []
+        made, built = [], {}
 
         def scan(sd, pi):
             """One row of rays at pitch pi: (state, first, last, uv, paint uv); state 3 = windscreen, pillar,
@@ -1153,6 +1489,17 @@ class Kit:
                 pts = [run[k][j] for k in range(max(0, i - 2), min(len(run), i + 3))]
                 return sum(pts, Vector()) / len(pts)
             edges = [(avg(i, 1), avg(i, 2)) for i in range(len(run))]
+            # 0.4.5: no wider than 1.2x the pillar's usual width (median of the middle rows). Near the roof the rows
+            # past the pillar meet the door frame or roof edge and the trim fanned out into a wedge or slab there
+            # ("A pillar joins the roof oddly": Roamer, Woodman, Burro, Brick, Cumbre and more, drive 22 Nov).
+            # (cfg trim_cap=False: not on cars where it cut into the pillar: Bull, Burro, Roamer, drive 25 Nov)
+            mid_w = sorted((b - a).length for a, b in edges[len(edges) // 5: len(edges) - len(edges) // 5] or edges)
+            cap_w = 1.2 * mid_w[len(mid_w) // 2]
+            capped = 0
+            for i, (a, b) in enumerate(edges):
+                if cap and (b - a).length > cap_w:
+                    edges[i] = (a, a + (b - a).normalized() * cap_w)
+                    capped += 1
             # The ends run on along the pillar (direction of the last few rows) to the dash and the header.
             k_ = min(4, len(edges) - 1)
             mid = lambda i: (edges[i][0] + edges[i][1]) / 2
@@ -1194,7 +1541,29 @@ class Kit:
             paints = [r[4] for r in run if r[4] is not None]
             mid_uv = paints[len(paints) // 2] if paints else run[len(run) // 2][3]
             colour = f"paint ({len(paints)}/{len(run)} rows)" if paints else "trim (no paint on this pillar)"
-            ob = P.mesh_object(f"pillar_trim_{side}", verts, faces, self.paint, uv=mid_uv, smooth=True)
+            w = [(b - a).length for a, b in edges[1:-1]]
+            print(f"pillar trim {side}: {len(run)} rows ({added} along the windscreen edge), pillar {min(w) * 100:.1f}-{max(w) * 100:.1f} cm wide, "
+                  f"ends run on {lo_end * 100:.0f} cm down, {hi_end * 100:.0f} cm up, colour {colour}"
+                  + (f", {capped} rows narrowed to {cap_w * 100:.1f} cm" if capped else ""))
+            built[side] = (verts, faces, mid_uv)
+        # 0.4.5: both trims one colour, the header's (the strip above the windscreen they run into): each took its
+        # own pillar's paint, and on two-tone and wood-sided liveries one side came out another colour ("left and
+        # right A pillars have different colours": Grand Woodman, Woodman, Marshal). No header: the first side's.
+        head = bpy.data.objects.get("header")
+        if head is not None and head.data.uv_layers:
+            one_uv, colour = tuple(head.data.uv_layers[0].data[0].uv), "the header's"
+        elif built:
+            one_uv, colour = built[sorted(built)[0]][2], f"pillar {sorted(built)[0]}'s"
+        # A side where no pillar was found gets the other side's trim, mirrored (the bodies are symmetric): it showed
+        # the body's own pillar there, another shape and colour (Tinny L, Blast Wagon R, Marshal L, Rust Ox R).
+        if len(built) == 1:
+            have = next(iter(built))
+            verts, faces, uv_ = built[have]
+            other = "R" if have == "L" else "L"
+            built[other] = ([(-x, y, z) for x, y, z in verts], [tuple(reversed(f)) for f in faces], uv_)
+            print(f"pillar trim {other}: none found, mirrored from {have}")
+        for side, (verts, faces, _) in sorted(built.items()):
+            ob = P.mesh_object(f"pillar_trim_{side}", verts, faces, self.paint, uv=one_uv, smooth=True)
             # Smooth along the pillar (one section per row: flat shading gave light/dark bands, one per row),
             # sharp at the four long corners and the end caps.
             import bmesh
@@ -1205,10 +1574,9 @@ class Kit:
             bmesh.ops.split_edges(bm, edges=sharp)
             bm.to_mesh(ob.data)
             bm.free()
-            w = [(b - a).length for a, b in edges[1:-1]]
-            print(f"pillar trim {side}: {len(run)} rows ({added} along the windscreen edge), pillar {min(w) * 100:.1f}-{max(w) * 100:.1f} cm wide, "
-                  f"ends run on {lo_end * 100:.0f} cm down, {hi_end * 100:.0f} cm up, colour {colour}")
             made.append(side)
+        if built:
+            print(f"pillar trims: colour {colour} on both sides")
         return made
 
     def inner_skins(self, eye, seat=(0.0, 0.02, -0.12), max_dist=1.6, inset=0.003, open_boxes=()):
@@ -1339,14 +1707,36 @@ class Kit:
         B2U = U2B3.inverted()
         e_ = Vector(eye)
         verts, faces, uvs = [], [], []
+        shaded = 0
+        # 0.4.5: a car with a floor covering (cfg floor_cover, styles_v2 sets low_cover = (height, material)): copies of
+        # body faces down by the floor take that covering (Rust Ox: the step wells in the footwells were the livery's
+        # dark green, "the floor is black").
+        low_y, low_mat = getattr(self, "low_cover", (None, None))
+        lv, lf = [], []
         for pi in sorted(grown):
             poly = S.me.polygons[pi]
+            if low_y is not None and (B2U @ poly.center).y < low_y:
+                b_ = len(lv)
+                for vi in reversed(poly.vertices):
+                    p = B2U @ S.me.vertices[vi].co
+                    lv.append(tuple(p + (e_ - p).normalized() * inset))
+                lf.append(tuple(range(b_, b_ + len(poly.vertices))))
+                continue
             base = len(verts)
+            # 0.4.5: a face whose paint spot the car's baked shading makes dark (in game: nearly black from the seat;
+            # the inside of the body's outer skin is often a shaded spot outside) takes the plain body colour.
+            dark = sum(S.shade(tuple(S.uv[li].uv)) for li in poly.loop_indices) / len(poly.loop_indices) < S.AO_MIN
+            shaded += dark
             for vi, li in zip(reversed(poly.vertices), reversed(poly.loop_indices)):   # reversed: facing in
                 p = B2U @ S.me.vertices[vi].co
                 verts.append(tuple(p + (e_ - p).normalized() * inset))
-                uvs.append(tuple(S.uv[li].uv))
+                uvs.append(getattr(self, "fallback_uv", P.PAINT_UV) if dark else tuple(S.uv[li].uv))
             faces.append(tuple(range(base, base + len(poly.vertices))))
+        if shaded:
+            print(f"inner skins: {shaded} faces over shaded body spots take the plain body colour")
+        if lf:
+            P.mesh_object("inner_skins_low", lv, lf, low_mat, closed=False)
+            print(f"inner skins: {len(lf)} faces by the floor in the floor covering")
         if faces:
             P.mesh_object("inner_skins", verts, faces, self.paint, uvs=uvs, closed=False)
         print(f"inner skins: {len(found)} body faces seen from behind, {len(faces)} copied with neighbours")

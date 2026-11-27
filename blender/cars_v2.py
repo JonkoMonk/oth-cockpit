@@ -15,7 +15,9 @@
 #                              wheel_drop, wheel_dist, wheel_r, wheel_tilt  (see styles.Layout)
 CARS = {
     # Toyota FJ40. The approved v2 mock-up: painted steel, black pad, dials read through the wheel.
-    "DingDing": dict(game="DingDing", side=-1, character="Painted steel and a padded brow: the classic 70s Land Cruiser",
+    "DingDing": dict(game="DingDing", side=-1,
+                     rear_wall="flat",
+                     character="Painted steel and a padded brow: the classic 70s Land Cruiser",     # 0.4.5: keeps the approved flat back wall (the traced one met the headliner: flicker)
                      dash="painted_pad", cluster="binnacle", wheel="droop", seats="bucket", handbrake="pull",
                      features=["grab_bar", "fj_bits"], eye_y=1.62, eye_z=-0.44, driver_x=0.42, dash_z=0.22, wheel_drop=0.50,
                      wheel_dist=0.42, wheel_tilt=25, wheel_r=0.212,
@@ -34,7 +36,8 @@ CARS = {
                      ws=dict(base_y=1.40, base_z=0.43, top_y=2.0, top_z=0.31, half_w=0.73),   # measured by hand (CLAUDE.md)
                      colors=dict(pad=(0.24, 0.23, 0.25))),
     # Toyota FJ45 pickup: the DingDing's work-boots brother. Bench seat, rubber tray on the dash, no radio.
-    "Burro": dict(game="Burro", fit_sides=False,   # fit_sides off: no gain (body paint seen +2%), darker rear corner (check 2026-11-08)
+    "Burro": dict(game="Burro", fit_sides=False, trim_cap=False,   # trim_cap off: 0.4.5b2, the right A pillar curved (drive 25 Nov)
+                    # fit_sides off: no gain (body paint seen +2%), darker rear corner (check 2026-11-08)
                   side=1, character="The DingDing's workhorse brother: bench seat, dash tray, no radio",
                   dash="painted_pad", cluster="binnacle", wheel="t", seats="bench", seat_pattern="stripes", radio=False,
                   handbrake="pull", features=[], horn="accent",
@@ -63,7 +66,8 @@ CARS = {
                      colors=dict(seat=(0.62, 0.20, 0.16), seat2=(0.72, 0.30, 0.24), accent=(0.95, 0.88, 0.75),
                                  door=(0.55, 0.18, 0.14), panel=(0.22, 0.22, 0.24))),
     # Ford Bronco (first generation): wide oval instrument band, grab bar, two-spoke wheel.
-    "BullV1": dict(game="Bull", side=-1, character="Early Bronco: horizontal oval dial band, grab bar, saddle-tan vinyl",
+    "BullV1": dict(game="Bull", side=-1, trim_cap=False, roof_edge_short=False,   # 0.4.5b2: A pillars as in 0.4.4 (drive 25 Nov)
+                    character="Early Bronco: horizontal oval dial band, grab bar, saddle-tan vinyl",
                    dash="painted_pad", cluster="oval", wheel="two", seats="bucket", seat_pattern="ribs", handbrake="pull",
                    colors=dict(seat=(0.66, 0.44, 0.26), seat2=(0.74, 0.52, 0.32), door=(0.58, 0.38, 0.22),
                                pad=(0.30, 0.22, 0.17))),
@@ -98,28 +102,36 @@ CARS = {
                                      seat2=(0.78, 0.62, 0.44), door=(0.62, 0.48, 0.34), rim=(0.50, 0.30, 0.16),
                                      carpet=(0.50, 0.38, 0.26), wood=(0.52, 0.30, 0.15))),
     # 1950s woodie wagon: painted dash, one big cream speedo, banjo wheel, push-button radio, wooden roof bows.
-    "Timberbox": dict(game="Timberbox", side=-1, character="50s woodie: one big cream speedo, banjo wheel, push-button radio",
+    "Timberbox": dict(game="Timberbox", side=-1,
+                      dash_paint=(0.27, 0.26, 0.25),   # 0.4.5: the bonnet is black in most liveries ("Vantablack dash")
+                      floor_cover=(0.36, 0.27, 0.18),
+                      character="50s woodie: one big cream speedo, banjo wheel, push-button radio",     # 0.4.5: brown carpet; the floor took the black lower body
                       dash="painted", cluster="single", wheel="banjo", rim_thick=0.012, wheel_r=0.22, seats="bench",
                       handbrake="pull", dials="cream", radio="pushbutton", door_insert="wood", features=["wood_lining"],
                       colors=dict(rim=(0.92, 0.88, 0.76), spoke=(0.80, 0.80, 0.80), seat=(0.55, 0.30, 0.18),
                                   seat2=(0.68, 0.42, 0.26), door=(0.50, 0.30, 0.18), panel=(0.20, 0.18, 0.16))),
     # Dodge Power Wagon: flat steel truck dash, cream dials, big flat wheel, bench, winch PTO lever.
-    "BlastWagon": dict(game="BlastWagon", fit_sides=False,   # fit_sides off: its cab back-wall corners got worse (check 2026-11-08)
+    "BlastWagon": dict(game="BlastWagon", fit_sides=False,
+                       rear_wall="flat",   # 0.4.5: keeps the old flat back wall (the traced one flickered against the inner skins)   # fit_sides off: its cab back-wall corners got worse (check 2026-11-08)
                   side=-1, character="Power Wagon: flat steel, cream dials, winch lever on the floor",
                        dash="flat", cluster="row", wheel="four", wheel_r=0.23, wheel_tilt=35, seats="bench", handbrake="pull",   # pull handle under the dash: a floor lever lay in the bench when pulled (0.4.4 b5)
                        dials="cream", radio=False, features=["winch_lever"],
                        colors=dict(seat=(0.30, 0.26, 0.22), seat2=(0.40, 0.35, 0.30), panel=(0.20, 0.20, 0.20),
                                    rim=(0.14, 0.14, 0.15), spoke=(0.14, 0.14, 0.15))),
     # Volvo TP21 "Sugga" radio car: 50s Volvo dash, ivory two-spoke wheel, a military radio set for the passenger.
-    "Boar": dict(game="Boar", side=-1, character="Swedish army radio car: ivory wheel, one big dial, radio set on the passenger side",
+    "Boar": dict(game="Boar", side=-1, rear_tuck=False,   # 0.4.5b3: tucked, a dark wedge reached into its rear side windows
+                 character="Swedish army radio car: ivory wheel, one big dial, radio set on the passenger side",
                  dash="painted", cluster="single", wheel="two", rim_thick=0.013, wheel_r=0.21, seats="bucket", handbrake="pull",
                  dials="cream", radio=False, glovebox=False, features=[],
                  colors=dict(rim=(0.90, 0.86, 0.74), spoke=(0.90, 0.86, 0.74), seat=(0.30, 0.31, 0.24),
                              seat2=(0.38, 0.39, 0.30), door=(0.30, 0.31, 0.24))),
     # VW Iltis: bare military. Instrument box on a black dash, roll bar, canvas roof, extinguisher.
-    "Lynx": dict(game="Lynx", side=-1, character="Bundeswehr Iltis: bare black dash, instrument box, roll bar, canvas",
+    "Lynx": dict(game="Lynx", side=-1,
+                 eye_y=1.48,   # 0.4.5: 3 cm lower than the measured 1.51 ("seating position a bit high", drive 22 Nov)
+                 floor_cover=(0.30, 0.31, 0.27),
+                 character="Bundeswehr Iltis: bare black dash, instrument box, roll bar, canvas",     # 0.4.5: olive rubber; the painted floor read as black at the back
                  dash="plastic", cluster="box", wheel="two", seats="bucket", handbrake="lever", dials="olive", radio=False,
-                 features=["roll_cage", "canvas_roof", "fire_extinguisher"],
+                 features=["roll_cage", "canvas_roof"],   # 0.4.5: no fire extinguisher (a red post on the passenger floor: "what is the red thing?")
                  colors=dict(dash=(0.17, 0.17, 0.18), pad=(0.17, 0.17, 0.18), seat=(0.33, 0.35, 0.24),
                              seat2=(0.40, 0.42, 0.30), liner=(0.40, 0.42, 0.30), door=(0.20, 0.20, 0.21),
                              cage=(0.20, 0.20, 0.21))),
@@ -140,7 +152,8 @@ CARS = {
                               seat=(0.40, 0.40, 0.42), seat2=(0.50, 0.50, 0.52), accent=(0.86, 0.36, 0.22),
                               door=(0.42, 0.42, 0.44), rim=(0.26, 0.26, 0.28), spoke=(0.26, 0.26, 0.28))),
     # Toyota 4Runner / Hilux Surf (around 1990): dark 90s plastic, the dash-top inclinometer, console. RHD.
-    "Roamer": dict(game="Roamer", side=1, character="90s 4Runner: the dash-top tilt meter, sporty three-spoke, blue velour",
+    "Roamer": dict(game="Roamer", side=1, trim_cap=False,   # 0.4.5b2: the width cap cut its A pillars (drive 25 Nov)
+                   character="90s 4Runner: the dash-top tilt meter, sporty three-spoke, blue velour",
                    dash="plastic", cluster="wide", wheel="three", hub="big", rim_thick=0.022, seats="headrest", seat_pattern="ribs",
                    handbrake="lever", dials="eighties", features=["console"], carpet=True,
                    colors=dict(dash=(0.30, 0.31, 0.35), pad=(0.24, 0.25, 0.29), seat=(0.30, 0.36, 0.50),
@@ -149,7 +162,7 @@ CARS = {
     # Lada Niva: Soviet 70s. Three dials in deep tubes, two transfer levers, roll cage, brown patterned seats.
     "Polyana": dict(game="Polyana", side=-1, character="Lada Niva: three dials in deep tubes, two transfer levers, roll cage",
                     dash="plastic", cluster="tubes", wheel="two", rim_thick=0.013, seats="headrest", seat_pattern="tartan",
-                    handbrake="lever", features=["roll_cage"], extra_levers=[(0.15, "knob")],
+                    handbrake="lever", features=["roll_cage"], extra_levers=[(0.03, "knob")],   # 0.4.5: second range lever on the tunnel (at 0.15 it stood off the tunnel, "floating" by the passenger)
                     nudge_reach=0.06,   # lets the speedo drop from the rim line into the wheel's opening
                     fit_sides=True,     # body curves in hard at the rear corners (review 2026-11-08)
                     colors=dict(dash=(0.15, 0.15, 0.16), pad=(0.15, 0.15, 0.16), seat=(0.42, 0.28, 0.20),
@@ -169,7 +182,8 @@ CARS = {
                                  rim=(0.20, 0.19, 0.18), spoke=(0.20, 0.19, 0.18))),
     # Unimog 406 double cab: flat dash, dials in the middle, a near-flat big wheel and a forest of levers.
     "Mammoth": dict(game="Mammoth", fit_sides=False,   # fit_sides off: headliner wedges in the rear corners (check 2026-11-08)
-                  side=-1, character="Unimog: big flat wheel, dials in the middle, a forest of levers",
+                  side=-1, floor_cover=(0.46, 0.46, 0.40), cover_skins=False,   # 0.4.5b2: olive-grey rubber floor (black footwells, drive 25 Nov); its body skins keep the paint (two coloured copies of overlapping faces flickered)
+                  character="Unimog: big flat wheel, dials in the middle, a forest of levers",
                     dash="flat", cluster="center", wheel="bus", wheel_r=0.23, wheel_tilt=55, seats="headrest", handbrake="lever",
                     dials="olive", radio=False, features=["fire_extinguisher"],
                     extra_levers=[(0.15, "knob3"), (0.20, "knob2"), (0.25, "knob")],
@@ -184,7 +198,9 @@ CARS = {
                                 rim=(0.16, 0.16, 0.18), spoke=(0.16, 0.16, 0.18))),
     # Mercedes T2 "Düdo" camper: bus wheel, tall dash, engine cover, the camper box open behind the seats
     # (0.4.4 rebuild after his video 2026-11-08 18-10: the old checked curtain closed it off; signatures_v2.camper).
-    "RustOx": dict(game="RustOx", side=-1, character="Mercedes camper van: bus wheel, engine box, the camper behind you",
+    "RustOx": dict(game="RustOx", side=-1,
+                   floor_cover=(0.52, 0.51, 0.48),   # 0.4.5b2: lighter (0.34 grey still read as black down in the cab, drive 25 Nov)
+                   character="Mercedes camper van: bus wheel, engine box, the camper behind you",     # 0.4.5: grey rubber cab floor; in a dark livery it read as black
                    dash="plastic", cluster="binnacle", wheel="bus", wheel_r=0.22, wheel_tilt=50, seats="headrest",
                    handbrake="lever", features=["engine_cover"], tunnel=False, transfer=False, rear_bench=False,
                    lining_skip=("rear_wall", "header"),   # camper() makes its own rear wall (both door windows) + front cove
